@@ -610,11 +610,10 @@ function App() {
         </span>
       </header>
 
-      <form className="card connect" onSubmit={connect}>
-        <h2>Connect an app</h2>
+      <form className="card connect" onSubmit={connect} aria-label="Connect an app">
         <div className="fields">
           <div className="field">
-            <label className="field-label" htmlFor="app">App</label>
+            <label className="field-label" htmlFor="app">Connect an app</label>
             <Combobox
               id="app"
               value={app}
@@ -809,22 +808,14 @@ function App() {
           ) : (
             <div className="table-scroll">
               <table className="ledger-table">
-                <colgroup>
-                  <col className="col-date" />
-                  <col className="col-account" />
-                  <col />
-                  <col className="col-amount" />
-                  <col className="col-amount" />
-                  <col className="col-source" />
-                </colgroup>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Account</th>
+                    <th className="col-date">Date</th>
+                    <th className="col-account">Account</th>
                     <th>Memo</th>
-                    <th className="num">Debit</th>
-                    <th className="num">Credit</th>
-                    <th>Source</th>
+                    <th className="num col-amount">Debit</th>
+                    <th className="num col-amount">Credit</th>
+                    <th className="col-source">Source</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -1,17 +1,15 @@
 /* Scrolling panels never grow taller than the screen, whatever its shape */
 :root {
   --panel-max: min(720px, max(280px, 70vh));
-  --columns-h: max(480px, min(880px, calc(100vh - 56px)));
 }
 @supports (height: 100dvh) {
   :root {
     --panel-max: min(720px, max(280px, 70dvh));
-    --columns-h: max(480px, min(880px, calc(100dvh - 56px)));
   }
 }
 
 .page {
-  max-width: 1600px;
+  max-width: 1920px;
   margin: 0 auto;
   /* Respect notches and rounded corners on phones in landscape */
   padding:
@@ -32,9 +30,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 12px;
-  margin-bottom: -8px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: -4px;
 }
 .brand {
   display: flex;
@@ -359,9 +355,22 @@ button:focus-visible {
   align-items: start;
 }
 @media (min-width: 1024px) {
-  .columns { grid-template-columns: minmax(340px, 400px) minmax(0, 1fr); align-items: stretch; }
-  /* Side by side, both panels share one height and scroll inside themselves */
-  .columns > .card { height: var(--columns-h); }
+  /* The page is exactly one screen tall; the two panels take whatever height is
+     left and scroll inside themselves, so a bigger screen simply shows more rows.
+     Very short windows keep a usable minimum and the page scrolls instead. */
+  .page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .columns {
+    flex: 1 1 0;
+    min-height: 440px;
+    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .columns > .card { min-height: 0; }
   .columns .events > ol,
   .columns .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
   .columns .empty { flex: 1; justify-content: center; }
@@ -599,7 +608,6 @@ tbody tr:hover td { background: var(--surface-hover); }
 /* When the ledger box is narrow, drop Source so the text columns keep their room */
 .ledger { container-type: inline-size; }
 @container (max-width: 780px) {
-  .col-source { width: 0; }
   .ledger-table th:nth-child(6),
   .ledger-table td:nth-child(6) { display: none; }
 }
@@ -641,7 +649,6 @@ td.num { font-weight: 500; }
 /* Short screens, e.g. phones in landscape */
 @media (max-height: 560px) {
   .page { padding-top: max(16px, env(safe-area-inset-top)); gap: 16px; }
-  .header { padding-bottom: 8px; }
 }
 
 /* Very wide screens: give the events column a bit more room */
@@ -684,7 +691,6 @@ td.num { font-weight: 500; }
   .ledger-table tbody,
   .ledger-table tr,
   .ledger-table td { display: block; min-width: 0; width: 100%; }
-  .ledger-table colgroup { display: none; }
   .ledger-table thead {
     position: absolute;
     width: 1px;
