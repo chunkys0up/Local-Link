@@ -1,9 +1,6 @@
 """HTTP API: POST /connect starts a run in the background, GET /events reports it."""
 
 import asyncio
-import logging
-import shutil
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -11,23 +8,7 @@ from pydantic import BaseModel, Field
 import ledger
 import pipeline
 
-log = logging.getLogger("uvicorn.error")
-
-
-def reset_state() -> None:
-    """Start every runner session clean: empty ledger, no cached scripts."""
-    ledger.DB_PATH.unlink(missing_ok=True)
-    shutil.rmtree(pipeline.CACHE_DIR, ignore_errors=True)
-    log.info("Cleared %s and %s/", ledger.DB_PATH.name, pipeline.CACHE_DIR.name)
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    reset_state()
-    yield
-
-
-app = FastAPI(title="Local Link runner", lifespan=lifespan)
+app = FastAPI(title="Local Link runner")
 _tasks: set[asyncio.Task] = set()
 
 
@@ -56,3 +37,12 @@ def events(run_id: str | None = None, after: int = 0) -> dict:
 @app.get("/ledger")
 def get_ledger(limit: int = 1000) -> dict:
     return {"rows": ledger.all_rows(limit)}
+
+
+@app.post("/reset")
+def reset() -> dict:
+    """Testing aid: clear the ledger, its change history, saved extractors and runs."""
+    if pipeline.any_running():
+        raise HTTPException(409, "a run is in progress; wait for it to finish")
+    pipeline.reset()
+    return {"cleared": True}

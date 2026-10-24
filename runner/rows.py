@@ -1,4 +1,4 @@
-"""The one row shape every extractor must produce, plus the reference-total shape."""
+"""The one row shape every extractor must produce."""
 
 import datetime as dt
 from decimal import Decimal
@@ -20,11 +20,3 @@ class NormalizedRow(BaseModel):
     source: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
 
-
-class Reference(BaseModel):
-    """Totals read from the app itself, independent of the extractor."""
-
-    row_count: int = Field(ge=0)
-    total_debits: Decimal
-    total_credits: Decimal
-    accounts: dict[str, Decimal]  # account -> debits minus credits

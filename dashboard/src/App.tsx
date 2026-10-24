@@ -13,6 +13,23 @@ type RunEvent = {
   detail: string
 }
 
+type ChangeFields = {
+  date: string
+  account: string
+  amount: string
+  side: 'debit' | 'credit'
+  memo: string
+}
+
+type Change = {
+  change: 'added' | 'changed' | 'deleted'
+  source: string
+  before: ChangeFields | null
+  after: ChangeFields | null
+}
+
+type Changes = { added: number; changed: number; deleted: number; items: Change[] }
+
 type RunSnapshot = {
   run_id: string
   app: string
@@ -21,6 +38,7 @@ type RunSnapshot = {
   gap: string[]
   rows_loaded: number | null
   used_cache: boolean
+  changes: Changes | null
   events: RunEvent[]
 }
 
@@ -98,15 +116,85 @@ function lastStepText(steps: RunEvent[]): string {
   return `${last.label} · ${last.detail}`
 }
 
-function EventRow({ event }: { event: RunEvent }) {
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+function EventRow({ event, start }: { event: RunEvent; start: number }) {
   return (
     <li>
       <span className={`dot dot-${event.kind}`} aria-hidden="true" />
-      <div>
+      <div className="event-body">
         <div className="event-label">{event.label}</div>
         {event.detail && <div className="mono muted small event-detail">{event.detail}</div>}
       </div>
+      <span className="mono muted small event-time">+{formatDuration(event.ts - start)}</span>
     </li>
+  )
+}
+
+const CHANGE_SIGN = { added: '+', changed: '~', deleted: '−' } as const
+const FIELD_NAMES = ['date', 'account', 'amount', 'side', 'memo'] as const
+const OPEN_CHANGES_UP_TO = 20
+
+function describeRow(r: ChangeFields): string {
+  return `${r.date} · ${r.account} · ${r.side} ${r.amount}${r.memo ? ` · ${r.memo}` : ''}`
+}
+
+// GitHub-style view of what a load did to the ledger: + added, ~ changed, − deleted.
+function ChangesPanel({ changes }: { changes: Changes }) {
+  const total = changes.added + changes.changed + changes.deleted
+  return (
+    <section className="card changes" aria-labelledby="changes-h">
+      <div className="card-head">
+        <h2 id="changes-h">Changes in this load</h2>
+        <span className="mono change-counts">
+          <span className="diff-added-text">+{changes.added} added</span>
+          <span className="diff-changed-text">~{changes.changed} changed</span>
+          <span className="diff-deleted-text">−{changes.deleted} deleted</span>
+        </span>
+      </div>
+      {total === 0 ? (
+        <p className="muted">No changes since the last load.</p>
+      ) : (
+        <details open={total <= OPEN_CHANGES_UP_TO}>
+          <summary className="small">
+            {total} {total === 1 ? 'row' : 'rows'} affected
+          </summary>
+          <ul className="diff">
+            {changes.items.map((c) => {
+              const row = (c.after ?? c.before) as ChangeFields
+              return (
+                <li key={`${c.change}:${c.source}`} className={`diff-${c.change}`}>
+                  <span className="diff-sign mono" aria-label={c.change}>
+                    {CHANGE_SIGN[c.change]}
+                  </span>
+                  <div className="diff-body">
+                    <div>{describeRow(row)}</div>
+                    {c.change === 'changed' && c.before && c.after && (
+                      <ul className="diff-fields small">
+                        {FIELD_NAMES.filter((f) => c.before![f] !== c.after![f]).map((f) => (
+                          <li key={f}>
+                            {f}: <del>{c.before![f] || '(empty)'}</del> → <ins>{c.after![f] || '(empty)'}</ins>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="mono muted small event-detail">{c.source}</div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {changes.items.length < total && (
+            <p className="muted small">
+              Showing the first {changes.items.length} of {total}.
+            </p>
+          )}
+        </details>
+      )}
+    </section>
   )
 }
 
@@ -132,6 +220,17 @@ function App() {
   // the runner's memory, so stop if the run disappears or the runner stays unreachable.
   const runId = run?.run_id
   const running = run?.status === 'running'
+
+  // Tick once a second while a run is going so the timer counts up live.
+  const [now, setNow] = useState(() => Date.now() / 1000)
+  useEffect(() => {
+    if (!running) return
+    const timer = setInterval(() => setNow(Date.now() / 1000), 1000)
+    return () => clearInterval(timer)
+  }, [running])
+  const events = run?.events ?? []
+  const start = events[0]?.ts ?? 0
+  const elapsed = events.length === 0 ? null : (running ? Math.max(now, events[events.length - 1].ts) : events[events.length - 1].ts) - start
   useEffect(() => {
     if (!runId || !running) return
     let failures = 0
@@ -176,6 +275,18 @@ function App() {
     }
   }
 
+  async function clearData() {
+    if (!window.confirm('Clear the ledger, its change history and saved extractors? (testing only)')) return
+    setRequestError(null)
+    try {
+      await getJson('/api/reset', { method: 'POST' })
+      setRun(null)
+      setLedger([])
+    } catch (err) {
+      setRequestError((err as Error).message)
+    }
+  }
+
   const status = run?.status ?? 'idle'
 
   return (
@@ -208,6 +319,9 @@ function App() {
           <button type="submit" disabled={running}>
             {running ? 'Connecting…' : 'Connect'}
           </button>
+          <button type="button" className="secondary" onClick={clearData} disabled={running}>
+            Clear data
+          </button>
         </div>
         {requestError && <p className="request-error">{requestError}</p>}
       </form>
@@ -224,12 +338,21 @@ function App() {
         </section>
       )}
 
+      {run?.changes && <ChangesPanel changes={run.changes} />}
+
       <div className="columns">
         <section className="card events">
           <div className="card-head">
             <h2>Live events</h2>
             <span className="mono muted small">{run?.run_id}</span>
           </div>
+          {elapsed !== null && (
+            <div className="timer" role="timer" aria-live="off">
+              <span className="muted small">{running ? 'Elapsed' : 'Took'}</span>
+              <span className="mono timer-value">{formatDuration(elapsed)}</span>
+              {run?.used_cache && <span className="muted small">reused the saved extractor</span>}
+            </div>
+          )}
           <ul className="legend small muted" aria-label="Legend">
             <li><span className="dot dot-info" aria-hidden="true" />Pipeline step</li>
             <li><span className="dot dot-agent" aria-hidden="true" />Agent activity</li>
@@ -240,14 +363,14 @@ function App() {
           <ol>
             {groupEvents(run?.events ?? []).map((item, idx, items) =>
               item.type === 'event' ? (
-                <EventRow key={item.event.i} event={item.event} />
+                <EventRow key={item.event.i} event={item.event} start={start} />
               ) : (
                 <li key={item.steps[0].i} className="agent-group">
                   <span className="dot dot-agent" aria-hidden="true" />
                   <details>
                     <summary>
                       <span className="event-label">
-                        {running && idx === items.length - 1 ? 'Agents working…' : 'Agent steps'}
+                        {running && idx === items.length - 1 ? 'Agent working…' : 'Agent steps'}
                       </span>{' '}
                       <span className="muted small">
                         {item.steps.length} {item.steps.length === 1 ? 'step' : 'steps'}
@@ -258,7 +381,7 @@ function App() {
                     </summary>
                     <ol className="agent-steps">
                       {item.steps.map((ev) => (
-                        <EventRow key={ev.i} event={ev} />
+                        <EventRow key={ev.i} event={ev} start={start} />
                       ))}
                     </ol>
                   </details>
@@ -290,8 +413,8 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.map((r, idx) => (
-                    <tr key={idx}>
+                  {ledger.map((r) => (
+                    <tr key={`${r.app}/${r.source}`}>
                       <td className="mono">{r.date}</td>
                       <td>{r.account}</td>
                       <td className="mono num">{r.amount}</td>

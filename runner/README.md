@@ -1,26 +1,31 @@
 # runner
 
-Connects a local accounting app: a Droid agent writes `extract.py` + `reference.py`,
-the checker verifies them, and passing rows load into `ledger.db`.
+Connects a local accounting app: a Droid agent writes `extract.py`, the checker
+verifies its rows, and each load is diffed into `ledger.db` as added / changed / deleted.
 
 ```bash
 uv sync
-uv run pytest                                              # checker + permission policy tests
+uv run pytest                                              # checker, ledger diff, layout, policy tests
 uv run --env-file ../.env uvicorn server:app --port 8000   # API (needs FACTORY_API_KEY in ../.env)
 ```
 
 ```bash
 curl -X POST localhost:8000/connect -H 'Content-Type: application/json' \
   -d '{"app": "gnucash", "data_path": "/path/to/books.gnucash"}'   # -> {"run_id": ...}
-curl "localhost:8000/events?run_id=<id>"   # steps so far + status; omit run_id for the latest run
-curl localhost:8000/ledger                 # loaded rows
+curl "localhost:8000/events?run_id=<id>"   # steps so far, status, and the load's changes
+curl localhost:8000/ledger                 # current rows
+curl -X POST localhost:8000/reset          # testing: clear ledger, change history, saved extractors
 ```
 
-- `rows.py`: the normalized row every extractor must output, and the reference-total shape.
-- `checker.py`: debits = credits, row count, totals vs reference, nonzero suspense-like accounts.
-- `agent.py`: Droid session. Each run works in its own temp folder outside the project
-  (deleted when the run ends); writes are allowed only there, and commands only if
-  read-only or running a `.py` from that folder. Everything else is refused.
-- `pipeline.py`: cached scripts → agent → checker → one repair → `needs_human` or load.
-- `ledger.py`: SQLite ledger; a passing run replaces that app's rows.
-- Working scripts are cached in `cache/<app>/`; delete that folder to force the agent.
+- `rows.py`: the normalized row every extractor must output. `source` is a stable ID from
+  the app, used to match rows between loads.
+- `checker.py`: rows exist, debits = credits, source IDs unique, no money left in
+  suspense-type accounts.
+- `layout.py`: fingerprint of the data's structure (SQLite tables/columns, XML element
+  paths, CSV headers, JSON keys). A saved extractor is only reused while it's unchanged.
+- `agent.py`: Droid session in its own temp folder outside the project (deleted after the
+  run). Writes only there; commands only if read-only or running a `.py` from that folder.
+- `pipeline.py`: saved extractor (if the layout matches) or agent → checker → one repair →
+  `needs_human`, or diff into the ledger.
+- `ledger.py`: SQLite ledger keyed on (app, source), plus `ledger_changes` history.
+- Data persists across restarts; use `/reset` (or the dashboard's Clear data) to start over.
