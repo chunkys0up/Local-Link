@@ -148,11 +148,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
-.run-id {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--subtle);
-}
 
 /* Connect form */
 
@@ -178,11 +173,16 @@
   gap: 8px;
   flex: 0 1 auto;
 }
+/* Same size as the section titles (Live events, Ledger) */
 .field-label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text);
 }
+.field-label .muted { font-weight: 400; }
+/* Same 16px inset as the events bar and ledger header */
+.connect { padding: 14px 16px 16px; }
 
 /* Search fields with a dropdown of suggestions */
 .combobox { position: relative; min-width: 0; }
@@ -348,37 +348,88 @@ button:focus-visible {
 
 /* Layout */
 
-.columns {
+.workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
 }
 @media (min-width: 1024px) {
-  /* The page is exactly one screen tall; the two panels take whatever height is
-     left and scroll inside themselves, so a bigger screen simply shows more rows.
+  /* The page is exactly one screen tall; the ledger takes whatever height is
+     left and scrolls inside itself, so a bigger screen simply shows more rows.
      Very short windows keep a usable minimum and the page scrolls instead. */
   .page {
     min-height: 100vh;
     min-height: 100dvh;
     padding-bottom: max(24px, env(safe-area-inset-bottom));
   }
-  .columns {
+  .workspace {
     flex: 1 1 0;
     min-height: 440px;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
-    align-items: stretch;
   }
-  .columns > .card { min-height: 0; }
-  .columns .ledger-body { flex: 1 1 auto; }
-  .columns .account-tree { max-height: none; }
-  .columns .events > ol,
-  .columns .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
-  .columns .empty { flex: 1; justify-content: center; }
+  .workspace > .card { min-height: 0; }
+  .workspace .ledger-body { flex: 1 1 auto; }
+  .workspace .account-tree { max-height: none; }
+  .workspace .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
+  .workspace .empty { flex: 1; justify-content: center; }
 }
 
-/* Live events timeline */
+/* Live events: a one-line bar showing the newest step; click to open the feed */
+
+.events { padding: 0; gap: 0; }
+button.events-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+}
+button.events-bar:hover:not(:disabled) { background: var(--surface-hover); }
+button.events-bar:disabled { opacity: 1; cursor: default; }
+button.events-bar:focus-visible { outline-offset: -2px; }
+.events.open button.events-bar { border-radius: var(--radius) var(--radius) 0 0; }
+.events-bar-name { flex: none; font-weight: 600; }
+.events-bar-latest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.events-bar-latest .dot { margin-top: 0; }
+.events-bar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-bar-time { flex: none; }
+.events-bar-meta { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.events-bar-chevron { flex: none; display: grid; place-items: center; color: var(--muted); transition: transform 0.15s; }
+.events.open .events-bar-chevron { transform: rotate(90deg); }
+/* A pulse on the newest dot while the run is going */
+.dot-live { position: relative; }
+.dot-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.events-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: 12px 16px 6px;
+  border-top: 1px solid var(--border);
+}
 
 .events ol {
   list-style: none;
@@ -386,7 +437,7 @@ button:focus-visible {
   padding: 0;
   display: flex;
   flex-direction: column;
-  max-height: var(--panel-max);
+  max-height: min(420px, 40vh);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: none;
@@ -492,22 +543,6 @@ button:focus-visible {
 .agent-steps li { display: flex; gap: 10px; align-items: flex-start; }
 .agent-steps .dot { width: 7px; height: 7px; box-shadow: none; margin-top: 7px; }
 
-.timer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-}
-.timer-value {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-.cache-tag {
-  font-size: 12px;
-  color: var(--muted);
-}
 .event-body { flex: 1; min-width: 0; }
 .event-time {
   flex: none;
@@ -518,7 +553,7 @@ button:focus-visible {
 
 /* Ledger */
 
-.ledger-select { flex: 0 1 320px; min-width: 0; }
+.ledger-select { flex: 0 1 320px; width: 320px; min-width: 0; }
 .select-button {
   width: 100%;
   height: 34px;
@@ -546,15 +581,21 @@ button.select-button:hover:not(:disabled) { background: var(--surface); border-c
 }
 .combobox-option.selected .option-main { font-weight: 600; }
 
-.ledger-toolbar {
+.ledger { padding: 0; gap: 0; }
+/* Same 16px inset as the Live events bar, all the way round */
+.ledger-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
-  margin-top: -6px;
+  padding: 10px 16px;
 }
-.load-counts { display: inline-flex; flex-wrap: wrap; gap: 0 10px; margin-left: 4px; font-weight: 600; }
+.ledger-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.ledger-load { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.ledger-controls { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 0 1 auto; }
+.ledger .empty { margin: 0 16px 16px; }
+.load-counts { display: inline-flex; flex-wrap: wrap; gap: 0 8px; font-weight: 600; }
 .text-added { color: var(--ok-text); }
 .text-changed { color: var(--warn-text); }
 .text-deleted { color: var(--bad-text); }
@@ -615,7 +656,6 @@ td.balance { color: var(--muted); }
   display: grid;
   grid-template-columns: clamp(200px, 30%, 300px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  margin: 0 -22px -20px;
   border-top: 1px solid var(--border);
   min-height: 0;
 }
@@ -715,7 +755,7 @@ button.crumb {
   font-weight: 400;
 }
 button.crumb:hover:not(:disabled) { background: none; color: var(--accent-text); }
-.register-balance { white-space: nowrap; }
+.register-balance { display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .register-balance .mono { font-weight: 600; }
 .register .table-scroll { margin: 0; border-top: 0; }
 .register .empty { flex: 1; }
@@ -771,18 +811,9 @@ td.num { font-weight: 500; }
 
 
 /* Tablets and narrow windows */
-@media (max-width: 1023px) {
-  .events ol { max-height: min(420px, var(--panel-max)); }
-}
-
 /* Short screens, e.g. phones in landscape */
 @media (max-height: 560px) {
   .page { padding-top: max(16px, env(safe-area-inset-top)); gap: 16px; }
-}
-
-/* Very wide screens: give the events column a bit more room */
-@media (min-width: 1600px) {
-  .columns { grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); }
 }
 
 /* Phones */
@@ -798,6 +829,9 @@ td.num { font-weight: 500; }
   .brand-mark { width: 28px; height: 28px; }
   .header h1 { font-size: 18px; }
   .card { padding: 16px; gap: 12px; }
+  /* These two cards pad their own rows */
+  .card.events,
+  .card.ledger { padding: 0; gap: 0; }
   
 
   /* 16px stops iOS from zooming into focused fields */
@@ -811,8 +845,8 @@ td.num { font-weight: 500; }
   .actions { flex-basis: 100%; }
   .actions button { flex: 1 1 auto; padding: 0 14px; }
 
-  .ledger-select { flex: 1 1 100%; }
-  .ledger-body { margin: 0 -16px -16px; }
+  .ledger-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 8px 16px; }
+  .ledger-select { flex: 1 1 100%; width: auto; }
   .register .table-scroll { padding: 10px; }
   button.tree-toggle { height: 28px; width: 28px; }
   .tree-row { min-height: 40px; }
@@ -874,8 +908,7 @@ td.num { font-weight: 500; }
   scrollbar-gutter: stable;
 }
 .events > ol {
-  margin-right: -22px;
-  padding-right: 12px;
+  padding: 2px 4px 12px 16px;
 }
 .events > ol::-webkit-scrollbar,
 .table-scroll::-webkit-scrollbar,
@@ -914,5 +947,5 @@ td.num { font-weight: 500; }
 }
 
 @media (max-width: 640px) {
-  .events > ol { margin-right: -16px; padding-right: 6px; }
+  .events-bar-meta { display: none; }
 }

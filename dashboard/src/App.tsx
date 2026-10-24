@@ -589,6 +589,24 @@ function App() {
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
   const [changesOnly, setChangesOnly] = useState(false)
+  // Live events start as a one-line bar; the choice is remembered in this browser
+  const [eventsOpen, setEventsOpen] = useState(() => {
+    try {
+      return localStorage.getItem('events-open') === '1'
+    } catch {
+      return false
+    }
+  })
+
+  function toggleEvents() {
+    const next = !eventsOpen
+    setEventsOpen(next)
+    try {
+      localStorage.setItem('events-open', next ? '1' : '0')
+    } catch {
+      // Private windows can refuse storage; the bar still works for this visit
+    }
+  }
   // Selected account path in the tree; '' is every account
   const [account, setAccount] = useState('')
 
@@ -718,6 +736,15 @@ function App() {
   }
 
   const status = run?.status ?? 'idle'
+
+  // The newest line of the feed, shown in the collapsed bar
+  const eventItems = groupEvents(events)
+  const lastItem = eventItems[eventItems.length - 1]
+  const latest = !lastItem
+    ? null
+    : lastItem.type === 'event'
+      ? { kind: lastItem.event.kind, label: lastItem.event.label, ts: lastItem.event.ts }
+      : { kind: 'agent', label: running ? 'Agent working…' : 'Agent steps', ts: lastItem.steps[lastItem.steps.length - 1].ts }
 
   // What the latest load did, if it was a load into the ledger on screen.
   const lastLoad = run?.changes && run.ledger_id === ledgerId ? run.changes : null
@@ -855,69 +882,113 @@ function App() {
         </section>
       )}
 
-      <div className="columns">
-        <section className="card events">
-          <div className="card-head">
-            <h2>Live events</h2>
-            <span className="mono muted small run-id">{run?.run_id}</span>
-          </div>
+      <section className={`card events${eventsOpen && run ? ' open' : ''}`} aria-label="Live events">
+        <button
+          type="button"
+          className="events-bar"
+          aria-expanded={eventsOpen && !!run}
+          aria-controls="events-list"
+          onClick={toggleEvents}
+          disabled={!run}
+        >
+          <span className="events-bar-name">Live events</span>
+          {latest ? (
+            <span className="events-bar-latest">
+              <span className={`dot dot-${latest.kind}${running ? ' dot-live' : ''}`} aria-hidden="true" />
+              <span className="events-bar-label">{latest.label}</span>
+              <span className="mono muted small events-bar-time">+{formatDuration(latest.ts - start)}</span>
+            </span>
+          ) : (
+            <span className="events-bar-latest muted">No run yet. Press Connect to start the agent.</span>
+          )}
           {elapsed !== null && (
-            <div className="timer" role="timer" aria-live="off">
-              <span className="muted small">{running ? 'Elapsed' : 'Took'}</span>
-              <span className="mono timer-value">{formatDuration(elapsed)}</span>
-              {run?.used_cache && <span className="cache-tag">Reused saved extractor</span>}
+            <span className="events-bar-meta">
+              {running ? 'Elapsed' : 'Took'} <span className="mono">{formatDuration(elapsed)}</span> · {events.length} events
+            </span>
+          )}
+          {run && (
+            <span className="events-bar-chevron" aria-hidden="true">
+              <Chevron />
+            </span>
+          )}
+        </button>
+        {eventsOpen && run && (
+          <>
+            <div className="events-meta small">
+              <ul className="legend muted" aria-label="Legend">
+                <li><span className="dot dot-info" aria-hidden="true" />Pipeline step</li>
+                <li><span className="dot dot-agent" aria-hidden="true" />Agent activity</li>
+                <li><span className="dot dot-ok" aria-hidden="true" />Passed</li>
+                <li><span className="dot dot-fail" aria-hidden="true" />Failed or blocked</li>
+              </ul>
+              <span className="muted">
+                {run.used_cache && 'Reused saved extractor · '}
+                <span className="mono">{run.run_id}</span>
+              </span>
             </div>
-          )}
-          <ul className="legend small muted" aria-label="Legend">
-            <li><span className="dot dot-info" aria-hidden="true" />Pipeline step</li>
-            <li><span className="dot dot-agent" aria-hidden="true" />Agent activity</li>
-            <li><span className="dot dot-ok" aria-hidden="true" />Passed</li>
-            <li><span className="dot dot-fail" aria-hidden="true" />Failed or blocked</li>
-          </ul>
-          {!run && (
-            <p className="empty">
-              <strong>No run yet</strong>
-              <span className="small">Press Connect to start the agent.</span>
-            </p>
-          )}
-          <ol>
-            {groupEvents(run?.events ?? []).map((item, idx, items) =>
-              item.type === 'event' ? (
-                <EventRow key={item.event.i} event={item.event} start={start} />
-              ) : (
-                <li key={item.steps[0].i} className="agent-group">
-                  <span className="dot dot-agent" aria-hidden="true" />
-                  <details>
-                    <summary>
-                      <span className="event-label">
-                        {running && idx === items.length - 1 ? 'Agent working…' : 'Agent steps'}
-                      </span>{' '}
-                      <span className="muted small">
-                        {item.steps.length} {item.steps.length === 1 ? 'step' : 'steps'}
-                      </span>
-                      <span className="mono muted small event-detail">
-                        {lastStepText(item.steps)}
-                      </span>
-                    </summary>
-                    <ol className="agent-steps">
-                      {item.steps.map((ev) => (
-                        <EventRow key={ev.i} event={ev} start={start} />
-                      ))}
-                    </ol>
-                  </details>
-                </li>
-              ),
-            )}
-          </ol>
-        </section>
+            <ol id="events-list">
+              {eventItems.map((item, idx, items) =>
+                item.type === 'event' ? (
+                  <EventRow key={item.event.i} event={item.event} start={start} />
+                ) : (
+                  <li key={item.steps[0].i} className="agent-group">
+                    <span className="dot dot-agent" aria-hidden="true" />
+                    <details>
+                      <summary>
+                        <span className="event-label">
+                          {running && idx === items.length - 1 ? 'Agent working…' : 'Agent steps'}
+                        </span>{' '}
+                        <span className="muted small">
+                          {item.steps.length} {item.steps.length === 1 ? 'step' : 'steps'}
+                        </span>
+                        <span className="mono muted small event-detail">{lastStepText(item.steps)}</span>
+                      </summary>
+                      <ol className="agent-steps">
+                        {item.steps.map((ev) => (
+                          <EventRow key={ev.i} event={ev} start={start} />
+                        ))}
+                      </ol>
+                    </details>
+                  </li>
+                ),
+              )}
+            </ol>
+          </>
+        )}
+      </section>
 
+      <div className="workspace">
         <section className="card ledger">
-          <div className="card-head">
-            <div className="card-title">
+          {/* One compact row: what this is and what the last load did, then the filters */}
+          <div className="ledger-head">
+            <div className="ledger-title">
               <h2>Ledger</h2>
               <span className="count">{ledger.length}</span>
+              {lastLoad && (
+                <span className="small muted ledger-load">
+                  Last load
+                  <span className="mono load-counts">
+                    <span className="text-added" title="added">+{lastLoad.added}</span>
+                    <span className="text-changed" title="changed">~{lastLoad.changed}</span>
+                    <span className="text-deleted" title="deleted">−{lastLoad.deleted}</span>
+                  </span>
+                  {lastLoad.items.length < lastLoadTotal && <span>· marking the first {lastLoad.items.length}</span>}
+                </span>
+              )}
             </div>
-            {ledgers.length > 0 && (
+            <div className="ledger-controls">
+              {lastLoad && (
+                <label className="toggle small">
+                  <input
+                    type="checkbox"
+                    checked={showChangesOnly}
+                    disabled={lastLoadTotal === 0}
+                    onChange={(e) => setChangesOnly(e.target.checked)}
+                  />
+                  Changes only
+                </label>
+              )}
+              {ledgers.length > 0 && (
               <Select
                 id="ledger"
                 label="Ledger"
@@ -944,30 +1015,9 @@ function App() {
                   ),
                 }))}
               />
-            )}
-          </div>
-          {lastLoad && (
-            <div className="ledger-toolbar small">
-              <p className="muted">
-                Last load{' '}
-                <span className="mono load-counts">
-                  <span className="text-added">+{lastLoad.added} added</span>
-                  <span className="text-changed">~{lastLoad.changed} changed</span>
-                  <span className="text-deleted">−{lastLoad.deleted} deleted</span>
-                </span>
-                {lastLoad.items.length < lastLoadTotal && <> · marking the first {lastLoad.items.length}</>}
-              </p>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={showChangesOnly}
-                  disabled={lastLoadTotal === 0}
-                  onChange={(e) => setChangesOnly(e.target.checked)}
-                />
-                Changes only
-              </label>
+              )}
             </div>
-          )}
+          </div>
           {ledger.length === 0 && !showChangesOnly ? (
             <p className="empty">
               <strong>Nothing loaded</strong>
@@ -1003,8 +1053,14 @@ function App() {
                     })}
                   </nav>
                   {selected && (
-                    <span className="register-balance">
-                      <span className="muted">Balance</span> <span className="mono">{formatBalance(selectedNode.balance)}</span>
+                    <span
+                      className="register-balance"
+                      title={selectedNode.balance === 0 ? undefined : selectedNode.balance > 0 ? 'Debit balance' : 'Credit balance'}
+                    >
+                      {/* Separate pieces so the gaps match; one mono string spaces "Cr" wider than "Balance" */}
+                      <span className="muted">Balance</span>
+                      <span className="mono">{MONEY.format(Math.abs(selectedNode.balance) / 100)}</span>
+                      {selectedNode.balance !== 0 && <span className="mono">{selectedNode.balance > 0 ? 'Dr' : 'Cr'}</span>}
                     </span>
                   )}
                 </div>
