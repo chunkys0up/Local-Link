@@ -89,3 +89,21 @@ def test_plain_request_uses_same_policy():
     policy = make_permission_handler(SCRATCH, lambda *e: None).raw_policy
     raw = {"toolUses": [{"confirmationType": "exec", "details": execute(f"rm {DATA}")}], "options": OPTIONS}
     assert policy(raw)["selectedOption"] == "cancel"
+
+
+def test_allows_cd_into_scratch_then_running_script():
+    # Droid reports extractedCommands as just ["python"]; the full command is what counts.
+    action = execute(f"cd {SCRATCH} && python probe.py")
+    action["extractedCommands"] = ["python"]
+    assert deny_reason(action, SCRATCH) is None
+
+
+def test_relative_script_resolves_against_cd_target():
+    assert deny_reason(execute("cd /Users/someone/books && python evil.py"), SCRATCH) is not None
+
+
+def test_blocks_pipes_redirects_and_subshells():
+    assert deny_reason(execute(f"python extract.py {DATA} > {DATA}.json"), SCRATCH) is not None
+    assert deny_reason(execute(f"python extract.py {DATA} | tee /tmp/x"), SCRATCH) is not None
+    assert deny_reason(execute("python extract.py $(rm -rf /)"), SCRATCH) is not None
+    assert deny_reason(execute("python extract.py; rm -rf /"), SCRATCH) is not None

@@ -36,6 +36,14 @@ reference total from the app itself.
 - The data path is READ-ONLY. Never create, modify, move or delete anything there.
   Open databases read-only (SQLite: sqlite3.connect("file:<path>?mode=ro", uri=True)).
 - Your working folder is {scratch}. Write files only there.
+- Commands are limited to read-only ones, or `python <script>.py` for a script in the
+  working folder. Anything else is refused. To run other programs (for example the
+  app's own CLI to get its reports), call them from a .py script in the working folder
+  with subprocess, and run that script.
+- If you run the app itself on the data, run it on a copy of the data inside the working
+  folder, with HOME and any config/cache dirs pointed into the working folder, so the
+  app can't write lock files or settings next to the real data.
+- If an action is refused, don't stop: take an allowed route and keep going.
 
 ## Deliverables (in the working folder)
 1. extract.py, run as: python extract.py <data_path>
@@ -72,6 +80,15 @@ change reference.py just to make the numbers match. If the books themselves are 
 keep the scripts honest and say so in your summary.
 """
 
+NUDGE = """\
+Your last action was refused by the session policy: {reason}
+
+That doesn't end the task. Take an allowed route (read-only commands, or write a .py
+script in the working folder and run it with python) and finish both deliverables.
+"""
+
+MAX_NUDGES = 2
+
 PYTHON = re.compile(r"^python3?(?:\.\d+)?$")
 
 
@@ -89,21 +106,49 @@ def _inside(path: str | None, root: Path) -> bool:
     return (p if p.is_absolute() else root / p).resolve().is_relative_to(root)
 
 
-def _runs_scratch_script(command: str, scratch: Path) -> bool:
+def _runs_scratch_scripts(command: str, scratch: Path) -> bool:
+    """True if the command only cds around and runs .py scripts that live in scratch.
+
+    Droid's extractedCommands drops arguments (just ["python"]), so parse the full
+    command: segments joined by && or ;, no pipes, redirects or subshells.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
     try:
-        parts = shlex.split(command)
+        tokens = list(lexer)
     except ValueError:
         return False
-    if parts[:1] == ["cd"]:
-        return True
-    if parts[:2] == ["uv", "run"]:
-        parts = parts[2:]
-    if len(parts) < 2 or not PYTHON.match(Path(parts[0]).name):
+    if any(t in ("`",) or "$(" in t for t in tokens):
         return False
-    script = Path(parts[1])
-    if script.suffix != ".py":
-        return False
-    return _inside(parts[1], scratch)
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token in ("&&", ";"):
+            segments.append([])
+        elif token and set(token) <= set("|&<>();"):
+            return False
+        else:
+            segments[-1].append(token)
+
+    cwd = scratch
+    ran_script = False
+    for parts in segments:
+        if not parts:
+            continue
+        if parts[0] == "cd" and len(parts) == 2:
+            target = Path(parts[1]).expanduser()
+            cwd = (target if target.is_absolute() else cwd / target).resolve()
+            continue
+        if parts[:2] == ["uv", "run"]:
+            parts = parts[2:]
+        if len(parts) < 2 or not PYTHON.match(Path(parts[0]).name):
+            return False
+        script = Path(parts[1]).expanduser()
+        if script.suffix != ".py":
+            return False
+        if not (script if script.is_absolute() else cwd / script).resolve().is_relative_to(scratch):
+            return False
+        ran_script = True
+    return ran_script
 
 
 PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE)
@@ -116,8 +161,7 @@ def deny_reason(confirmation: Mapping, scratch: Path) -> str | None:
         if confirmation.get("impactLevel") == "low":
             return None
         command = confirmation.get("fullCommand") or confirmation.get("command") or ""
-        commands = confirmation.get("extractedCommands") or [command]
-        if all(_runs_scratch_script(c, scratch) for c in commands):
+        if _runs_scratch_scripts(command, scratch):
             return None
         return (
             "only read-only commands, or running a Python script from the working "
@@ -212,25 +256,40 @@ async def run_agent(
     emit: Emit,
     error: list[str] | None = None,
 ) -> bool:
-    """Run one agent session. Returns whether the session itself finished cleanly."""
+    """Run one agent session. Returns whether its last turn finished cleanly."""
+    denials: list[str] = []
+
+    def tracked_emit(kind: str, label: str, detail: str) -> None:
+        if kind == "denied":
+            denials.append(detail)
+        emit(kind, label, detail)
+
     config = SessionConfig(autonomy=Autonomy.OFF)
     interactions = InteractionHandlers(
-        on_permission=make_permission_handler(scratch, emit)
+        on_permission=make_permission_handler(scratch, tracked_emit)
     )
+    prompt = build_prompt(app, data_path, scratch, error)
     async with Session(cwd=scratch, config=config, interactions=interactions) as session:
-        async with session.stream(
-            build_prompt(app, data_path, scratch, error), timeout=AGENT_TIMEOUT_SECONDS
-        ) as stream:
-            async for event in stream:
-                if isinstance(event, ToolCall):
-                    emit("agent", f"Agent: {event.name}", _describe_tool_call(event))
-                elif isinstance(event, ToolResult) and event.is_error:
-                    emit("agent", f"Agent: {event.tool_name} error", _short(event.content))
-                elif isinstance(event, AssistantMessage) and event.text.strip():
-                    emit("agent", "Agent says", _short(event.text, 600))
-                elif isinstance(event, ErrorEvent):
-                    emit("error", "Agent error", _short(event.message))
-        result = stream.result
+        for nudge in range(MAX_NUDGES + 1):
+            seen = len(denials)
+            async with session.stream(prompt, timeout=AGENT_TIMEOUT_SECONDS) as stream:
+                async for event in stream:
+                    if isinstance(event, ToolCall):
+                        emit("agent", f"Agent: {event.name}", _describe_tool_call(event))
+                    elif isinstance(event, ToolResult) and event.is_error:
+                        emit("agent", f"Agent: {event.tool_name} error", _short(event.content))
+                    elif isinstance(event, AssistantMessage) and event.text.strip():
+                        emit("agent", "Agent says", _short(event.text, 600))
+                    elif isinstance(event, ErrorEvent):
+                        emit("error", "Agent error", _short(event.message))
+            result = stream.result
+
+            # A refused action ends droid's turn; send it back to work once more.
+            done = all((scratch / name).exists() for name in ("extract.py", "reference.py"))
+            if len(denials) == seen or done or nudge == MAX_NUDGES:
+                break
+            emit("info", "Agent stopped after a refused action", "asking it to continue another way")
+            prompt = NUDGE.format(reason=denials[-1])
 
     if not result.success:
         emit("error", "Agent session failed", _short(f"{result.subtype} {result.error or ''}"))
