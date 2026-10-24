@@ -11,13 +11,17 @@ import re
 import shutil
 import sqlite3
 import time
+from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 from rows import NormalizedRow
 
 LEDGERS_DIR = Path(__file__).parent / "ledgers"
 FIELDS = ("date", "account", "amount", "side", "memo")
+# Top-level accounts that normally carry a credit balance; shown positive, like GnuCash does.
+CREDIT_NORMAL = re.compile(r"^(income|revenue|equity|liabilit)", re.IGNORECASE)
 
 SCHEMA = """
 create table if not exists ledger (
@@ -176,6 +180,30 @@ def all_rows(db_path: Path, limit: int = 1000) -> list[dict]:
             (limit,),
         )
         return [dict(r) for r in cursor]
+
+
+def source(db_path: Path) -> dict:
+    """The app and data path a ledger was loaded from."""
+    if not db_path.exists():
+        return {"app": "", "data_path": ""}
+    with connect(db_path) as conn:
+        row = conn.execute("select app, data_path from ledger_source").fetchone()
+    return {"app": row["app"], "data_path": row["data_path"]} if row else {"app": "", "data_path": ""}
+
+
+def totals(db_path: Path) -> list[dict]:
+    """Balance of each top-level account, signed the way the app shows it (credit-normal positive)."""
+    if not db_path.exists():
+        return []
+    balances: dict[str, Decimal] = defaultdict(Decimal)
+    with connect(db_path) as conn:
+        for r in conn.execute("select account, amount, side from ledger"):
+            amount = Decimal(r["amount"])
+            balances[r["account"].split(":")[0]] += amount if r["side"] == "debit" else -amount
+    return [
+        {"account": name, "total": f"{-b if CREDIT_NORMAL.match(name) else b:.2f}"}
+        for name, b in sorted(balances.items())
+    ]
 
 
 def reset() -> None:

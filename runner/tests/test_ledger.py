@@ -66,3 +66,22 @@ def test_each_source_gets_its_own_ledger(tmp_path, monkeypatch):
     assert [c.change for c in ledger.diff("GnuCash", [row("s", "1.00")], db_b)] == ["added"]
     assert ledger.all_rows(db_b) == []
     assert [(l["id"], l["data_path"], l["rows"]) for l in ledger.list_ledgers()] == [(a, "a.gnucash", 1)]
+
+
+def test_totals_per_top_level_account(tmp_path):
+    db = tmp_path / "ledger.db"
+    rows = [
+        row("a", "100.00", "Assets:Checking"),
+        row("b", "60.00", "Income:Sales", "credit"),
+        row("c", "40.00", "Equity:Opening", "credit"),
+        row("d", "10.00", "Expenses:Rent"),
+        row("e", "10.00", "Assets:Checking", "credit"),
+    ]
+    ledger.apply("app", "run_1", ledger.diff("app", rows, db), db, "/books.gnucash")
+    assert ledger.totals(db) == [
+        {"account": "Assets", "total": "90.00"},
+        {"account": "Equity", "total": "40.00"},
+        {"account": "Expenses", "total": "10.00"},
+        {"account": "Income", "total": "60.00"},
+    ]
+    assert ledger.source(db) == {"app": "app", "data_path": "/books.gnucash"}

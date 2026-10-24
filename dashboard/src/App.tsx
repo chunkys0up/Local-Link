@@ -63,6 +63,14 @@ const KIND_LABEL: Record<InstalledApp['kind'], string> = {
 // One ledger per source: the app plus its data path.
 type LedgerInfo = { id: string; app: string; data_path: string; rows: number }
 
+// Balance of each top-level account, signed like the source app shows it.
+type AccountTotal = { account: string; total: string }
+
+function formatMoney(value: string): string {
+  const n = Number(value)
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 type LedgerRow = {
   app: string
   date: string
@@ -445,6 +453,8 @@ function App() {
   const [ledgers, setLedgers] = useState<LedgerInfo[]>([])
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [ledger, setLedger] = useState<LedgerRow[]>([])
+  const [ledgerSource, setLedgerSource] = useState('')
+  const [totals, setTotals] = useState<AccountTotal[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
   const [changesOnly, setChangesOnly] = useState(false)
 
@@ -462,10 +472,18 @@ function App() {
   useEffect(() => {
     if (!ledgerId) {
       setLedger([])
+      setLedgerSource('')
+      setTotals([])
       return
     }
-    getJson<{ rows: LedgerRow[] }>(`/api/ledger?ledger_id=${encodeURIComponent(ledgerId)}`)
-      .then((data) => setLedger(data.rows))
+    getJson<{ rows: LedgerRow[]; data_path: string; totals: AccountTotal[] }>(
+      `/api/ledger?ledger_id=${encodeURIComponent(ledgerId)}`,
+    )
+      .then((data) => {
+        setLedger(data.rows)
+        setLedgerSource(data.data_path)
+        setTotals(data.totals)
+      })
       .catch((e: Error) => setRequestError(e.message))
   }, [ledgerId, ledgers])
 
@@ -696,6 +714,11 @@ function App() {
             <h2>Live events</h2>
             <span className="mono muted small run-id">{run?.run_id}</span>
           </div>
+          {run && (
+            <p className="source-path small">
+              <span className="muted">Source</span> <span className="mono">{run.data_path}</span>
+            </p>
+          )}
           {elapsed !== null && (
             <div className="timer" role="timer" aria-live="off">
               <span className="muted small">{running ? 'Elapsed' : 'Took'}</span>
@@ -778,6 +801,21 @@ function App() {
               />
             )}
           </div>
+          {ledgerSource && (
+            <p className="source-path small">
+              <span className="muted">Loaded from</span> <span className="mono">{ledgerSource}</span>
+            </p>
+          )}
+          {totals.length > 0 && (
+            <dl className="totals" aria-label="Account totals">
+              {totals.map((t) => (
+                <div key={t.account}>
+                  <dt className="muted small">{t.account}</dt>
+                  <dd className="mono">{formatMoney(t.total)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           {lastLoad && (
             <div className="ledger-toolbar small">
               <p className="muted">
