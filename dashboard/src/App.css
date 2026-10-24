@@ -366,11 +366,13 @@ button:focus-visible {
   .columns {
     flex: 1 1 0;
     min-height: 440px;
-    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     align-items: stretch;
   }
   .columns > .card { min-height: 0; }
+  .columns .ledger-body { flex: 1 1 auto; }
+  .columns .account-tree { max-height: none; }
   .columns .events > ol,
   .columns .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
   .columns .empty { flex: 1; justify-content: center; }
@@ -601,17 +603,144 @@ td:last-child { padding-right: 12px; }
 tbody tr { transition: background-color 0.1s; }
 tbody tr:hover td { background: var(--surface-hover); }
 /* Keep long account names and memos readable instead of squeezed */
-.col-date { width: 108px; }
-.col-account { width: 28%; }
+.col-date { width: 100px; }
+.col-account { width: 30%; }
 .col-amount { width: 100px; }
-.col-source { width: 18%; }
-/* When the ledger box is narrow, drop Source so the text columns keep their room */
-.ledger { container-type: inline-size; }
-@container (max-width: 780px) {
-  .ledger-table th:nth-child(6),
-  .ledger-table td:nth-child(6) { display: none; }
+.col-balance { width: 128px; }
+td.balance { color: var(--muted); }
+
+/* Account tree beside the sheet, like GnuCash's Accounts tab */
+.ledger { container: ledger / inline-size; }
+.ledger-body {
+  display: grid;
+  grid-template-columns: clamp(200px, 30%, 300px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  margin: 0 -22px -20px;
+  border-top: 1px solid var(--border);
+  min-height: 0;
 }
-td { overflow-wrap: anywhere; }
+.account-tree {
+  min-width: 0;
+  max-height: var(--panel-max);
+  padding: 6px 0;
+  border-right: 1px solid var(--border);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+}
+.tree,
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding-right: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tree-row:hover { background: var(--surface-hover); }
+.tree-row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+button.tree-toggle,
+span.tree-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  box-shadow: none;
+}
+button.tree-toggle:hover:not(:disabled) { background: var(--neutral-soft); }
+button.tree-toggle svg { transition: transform 0.15s; }
+button.tree-toggle[aria-expanded='true'] svg { transform: rotate(90deg); }
+button.tree-name {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.tree-name:hover:not(:disabled) { background: none; }
+button.tree-name:focus-visible { outline-offset: 0; }
+.tree-row.selected button.tree-name { color: var(--accent-text); font-weight: 500; }
+.tree-balance {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.register {
+  container: register / inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.register-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.crumb-part { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.crumb-sep { color: var(--subtle); }
+.crumb-current { font-weight: 600; overflow-wrap: anywhere; }
+button.crumb {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-weight: 400;
+}
+button.crumb:hover:not(:disabled) { background: none; color: var(--accent-text); }
+.register-balance { white-space: nowrap; }
+.register-balance .mono { font-weight: 600; }
+.register .table-scroll { margin: 0; border-top: 0; }
+.register .empty { flex: 1; }
+.register th:first-child,
+.register td:first-child { padding-left: 16px; }
+
+/* Narrow sheet: the account moves under the memo, and the number columns tighten */
+@container register (max-width: 760px) {
+  .ledger-table .account-cell { display: none; }
+  .ledger-table .memo-account { display: block; margin-top: 1px; font-size: 12px; color: var(--muted); }
+  .col-amount { width: 92px; }
+  .col-balance { width: 116px; }
+}
+
+/* Narrow ledger box: the tree sits above the sheet instead of beside it */
+@container ledger (max-width: 760px) {
+  .ledger-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  /* .ledger raises this above the desktop rule that lets the tree run full height */
+  .ledger .account-tree { max-height: clamp(120px, 22vh, 200px); border-right: 0; border-bottom: 1px solid var(--border); }
+}
+td { overflow-wrap: break-word; }
+.memo-account { display: none; }
 /* Source IDs are long; cut them off and show the full value on hover */
 .ledger-table td.source {
   overflow: hidden;
@@ -653,7 +782,7 @@ td.num { font-weight: 500; }
 
 /* Very wide screens: give the events column a bit more room */
 @media (min-width: 1600px) {
-  .columns { grid-template-columns: minmax(380px, 460px) minmax(0, 1fr); }
+  .columns { grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); }
 }
 
 /* Phones */
@@ -683,6 +812,10 @@ td.num { font-weight: 500; }
   .actions button { flex: 1 1 auto; padding: 0 14px; }
 
   .ledger-select { flex: 1 1 100%; }
+  .ledger-body { margin: 0 -16px -16px; }
+  .register .table-scroll { padding: 10px; }
+  button.tree-toggle { height: 28px; width: 28px; }
+  .tree-row { min-height: 40px; }
   .select-button { height: 44px; font-size: 14px; }
 
   /* Ledger rows become stacked cards instead of a wide table */
@@ -736,6 +869,7 @@ td.num { font-weight: 500; }
    instead of the macOS overlay bar floating over the text */
 .events > ol,
 .table-scroll,
+.account-tree,
 .combobox-list {
   scrollbar-gutter: stable;
 }
@@ -745,16 +879,19 @@ td.num { font-weight: 500; }
 }
 .events > ol::-webkit-scrollbar,
 .table-scroll::-webkit-scrollbar,
+.account-tree::-webkit-scrollbar,
 .combobox-list::-webkit-scrollbar {
   width: 10px;
 }
 .events > ol::-webkit-scrollbar-track,
 .table-scroll::-webkit-scrollbar-track,
+.account-tree::-webkit-scrollbar-track,
 .combobox-list::-webkit-scrollbar-track {
   background: transparent;
 }
 .events > ol::-webkit-scrollbar-thumb,
 .table-scroll::-webkit-scrollbar-thumb,
+.account-tree::-webkit-scrollbar-thumb,
 .combobox-list::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
@@ -762,12 +899,14 @@ td.num { font-weight: 500; }
 }
 .events > ol::-webkit-scrollbar-thumb:hover,
 .table-scroll::-webkit-scrollbar-thumb:hover,
+.account-tree::-webkit-scrollbar-thumb:hover,
 .combobox-list::-webkit-scrollbar-thumb:hover {
   background: var(--subtle) padding-box;
 }
 @supports not selector(::-webkit-scrollbar) {
   .events > ol,
   .table-scroll,
+  .account-tree,
   .combobox-list {
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;

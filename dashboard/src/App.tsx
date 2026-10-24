@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import './App.css'
 
 // 'lost' is set by the dashboard, not the runner: the run vanished (runner restarted)
@@ -165,17 +165,159 @@ function EventRow({ event, start }: { event: RunEvent; start: number }) {
   )
 }
 
-// A ledger row as shown in the table, marked with what the last load did to it.
-type DisplayRow = { key: string; fields: ChangeFields; source: string; run_id: string; change?: Change }
+// A ledger row as shown in the sheet, marked with what the last load did to it.
+type DisplayRow = {
+  key: string
+  fields: ChangeFields
+  source: string
+  run_id: string
+  change?: Change
+  // Running balance of the selected account(s), in cents, up to and including this row
+  balance?: number
+}
+
+// Amounts are summed as integer cents so balances stay exact.
+function toCents(amount: string): number {
+  return Math.round(Number(amount) * 100)
+}
+
+function signedCents(row: Pick<ChangeFields, 'amount' | 'side'>): number {
+  return row.side === 'debit' ? toCents(row.amount) : -toCents(row.amount)
+}
+
+const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function formatMoney(amount: string): string {
+  return amount ? MONEY.format(toCents(amount) / 100) : ''
+}
+
+// A balance as an amount and the side it sits on, the way GnuCash shows it.
+function formatBalance(cents: number): string {
+  if (cents === 0) return '0.00'
+  return `${MONEY.format(Math.abs(cents) / 100)} ${cents > 0 ? 'Dr' : 'Cr'}`
+}
+
+// Account names are paths like "Assets:Current Assets:Checking Account".
+const ACCOUNT_SEP = ':'
+
+type AccountNode = { name: string; path: string; children: AccountNode[]; balance: number; count: number }
+
+// The chart of accounts, rebuilt from the account paths in the ledger, with each
+// account's balance including everything below it.
+function buildAccountTree(rows: LedgerRow[]): { root: AccountNode; byPath: Map<string, AccountNode> } {
+  const root: AccountNode = { name: 'All accounts', path: '', children: [], balance: 0, count: 0 }
+  const byPath = new Map([['', root]])
+  for (const row of rows) {
+    const cents = signedCents(row)
+    root.balance += cents
+    root.count += 1
+    let parent = root
+    const parts = row.account.split(ACCOUNT_SEP)
+    parts.forEach((name, i) => {
+      const path = parts.slice(0, i + 1).join(ACCOUNT_SEP)
+      let node = byPath.get(path)
+      if (!node) {
+        node = { name, path, children: [], balance: 0, count: 0 }
+        byPath.set(path, node)
+        parent.children.push(node)
+      }
+      node.balance += cents
+      node.count += 1
+      parent = node
+    })
+  }
+  const sort = (node: AccountNode) => {
+    node.children.sort((a, b) => a.name.localeCompare(b.name))
+    node.children.forEach(sort)
+  }
+  sort(root)
+  return { root, byPath }
+}
+
+function isUnder(account: string, selected: string): boolean {
+  return !selected || account === selected || account.startsWith(selected + ACCOUNT_SEP)
+}
+
+function Chevron() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <path d="M3.5 2 6.5 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// The account tree beside the sheet. Top-level accounts start open.
+function AccountTree({ root, selected, onSelect }: { root: AccountNode; selected: string; onSelect: (path: string) => void }) {
+  // Accounts the user opened or closed, relative to the default
+  const [flipped, setFlipped] = useState<Set<string>>(() => new Set())
+
+  function toggle(path: string) {
+    setFlipped((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(path)) next.add(path)
+      return next
+    })
+  }
+
+  function renderNode(node: AccountNode, depth: number): ReactNode {
+    const open = node.children.length > 0 && (depth <= 1) !== flipped.has(node.path)
+    const isSelected = node.path === selected
+    return (
+      <li key={node.path}>
+        <div
+          className={`tree-row${isSelected ? ' selected' : ''}`}
+          style={{ paddingLeft: 8 + Math.max(0, depth - 1) * 14 }}
+          onClick={() => onSelect(node.path)}
+        >
+          {depth > 0 && node.children.length > 0 ? (
+            <button
+              type="button"
+              className="tree-toggle"
+              aria-expanded={open}
+              aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggle(node.path)
+              }}
+            >
+              <Chevron />
+            </button>
+          ) : (
+            depth > 0 && <span className="tree-toggle" aria-hidden="true" />
+          )}
+          <button type="button" className="tree-name" aria-current={isSelected || undefined} title={node.path || undefined}>
+            {node.name}
+          </button>
+          <span className="tree-balance mono">{depth === 0 ? `${node.count} rows` : formatBalance(node.balance)}</span>
+        </div>
+        {(open || depth === 0) && node.children.length > 0 && <ul>{node.children.map((c) => renderNode(c, depth + 1))}</ul>}
+      </li>
+    )
+  }
+
+  return (
+    <nav className="account-tree" aria-label="Accounts">
+      <ul className="tree">{renderNode(root, 0)}</ul>
+    </nav>
+  )
+}
 
 // A cell's value; for a changed row, the old value is shown struck through before it.
-function Cell({ row, field }: { row: DisplayRow; field: 'date' | 'account' | 'memo' }) {
+function Cell({
+  row,
+  field,
+  show = (v) => v,
+}: {
+  row: DisplayRow
+  field: 'date' | 'account' | 'memo'
+  show?: (value: string) => string
+}) {
   const c = row.change
   const value = row.fields[field]
-  if (c?.change !== 'changed' || !c.before || c.before[field] === value) return <>{value}</>
+  if (c?.change !== 'changed' || !c.before || c.before[field] === value) return <>{show(value)}</>
   return (
     <span className="cell-changed">
-      <del>{c.before[field] || '(empty)'}</del> {value}
+      <del>{c.before[field] ? show(c.before[field]) : '(empty)'}</del> {show(value)}
     </span>
   )
 }
@@ -184,10 +326,10 @@ function Cell({ row, field }: { row: DisplayRow; field: 'date' | 'account' | 'me
 function AmountCell({ row, side }: { row: DisplayRow; side: ChangeFields['side'] }) {
   const now = row.fields.side === side ? row.fields.amount : ''
   const before = row.change?.change === 'changed' && row.change.before?.side === side ? row.change.before.amount : ''
-  if (!before || before === now) return <>{now}</>
+  if (!before || before === now) return <>{formatMoney(now)}</>
   return (
     <span className="cell-changed">
-      <del>{before}</del> {now}
+      <del>{formatMoney(before)}</del> {formatMoney(now)}
     </span>
   )
 }
@@ -447,6 +589,8 @@ function App() {
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
   const [changesOnly, setChangesOnly] = useState(false)
+  // Selected account path in the tree; '' is every account
+  const [account, setAccount] = useState('')
 
   // Refresh the list of ledgers, then show `show` (or keep the current one, or the newest).
   const loadLedgers = useCallback(async (show?: string) => {
@@ -464,7 +608,9 @@ function App() {
       setLedger([])
       return
     }
-    getJson<{ rows: LedgerRow[] }>(`/api/ledger?ledger_id=${encodeURIComponent(ledgerId)}`)
+    // Ask for every row so the account balances add up
+    const limit = Math.max(1000, ledgers.find((l) => l.id === ledgerId)?.rows ?? 0)
+    getJson<{ rows: LedgerRow[] }>(`/api/ledger?ledger_id=${encodeURIComponent(ledgerId)}&limit=${limit}`)
       .then((data) => setLedger(data.rows))
       .catch((e: Error) => setRequestError(e.message))
   }, [ledgerId, ledgers])
@@ -579,7 +725,12 @@ function App() {
   const showChangesOnly = changesOnly && lastLoadTotal > 0
   const changeBySource = new Map((lastLoad?.items ?? []).map((c) => [c.source, c]))
   const ledgerBySource = new Map(ledger.map((r) => [r.source, r]))
-  const rows: DisplayRow[] = showChangesOnly
+  const tree = useMemo(() => buildAccountTree(ledger), [ledger])
+  // Fall back to every account if the selected one isn't in this ledger
+  const selected = tree.byPath.has(account) ? account : ''
+  const selectedNode = tree.byPath.get(selected) ?? tree.root
+  const selectedIsLeaf = selected !== '' && selectedNode.children.length === 0
+  const allRows: DisplayRow[] = showChangesOnly
     ? (lastLoad?.items ?? []).map((c) => ({
         key: `${c.change}:${c.source}`,
         fields: (c.after ?? c.before) as ChangeFields,
@@ -588,6 +739,20 @@ function App() {
         change: c,
       }))
     : ledger.map((r) => ({ key: `${r.app}/${r.source}`, fields: r, source: r.source, run_id: r.run_id, change: changeBySource.get(r.source) }))
+  const rows = allRows.filter((r) => isUnder(r.fields.account, selected))
+  const crumbs = selected ? selected.split(ACCOUNT_SEP) : []
+  // Accounts under the selection, named relative to it
+  const relativeAccount = (path: string) => (selected ? path.slice(selected.length + 1) : path)
+  // Summed across every account the running balance just drifts around zero, so only show it for a selection
+  const showBalance = !showChangesOnly && selected !== ''
+  // Running balance down the sheet (rows arrive sorted by date)
+  if (showBalance) {
+    let running = 0
+    for (const r of rows) {
+      running += signedCents(r.fields)
+      r.balance = running
+    }
+  }
 
   return (
     <main className="page">
@@ -758,7 +923,10 @@ function App() {
                 label="Ledger"
                 className="ledger-select"
                 value={ledgerId ?? ''}
-                onChange={setLedgerId}
+                onChange={(id) => {
+                  setLedgerId(id)
+                  setAccount('')
+                }}
                 options={ledgers.map((l) => ({
                   value: l.id,
                   display: (
@@ -800,44 +968,102 @@ function App() {
               </label>
             </div>
           )}
-          {rows.length === 0 ? (
+          {ledger.length === 0 && !showChangesOnly ? (
             <p className="empty">
               <strong>Nothing loaded</strong>
               <span className="small">Rows appear here only after the checker passes.</span>
             </p>
           ) : (
-            <div className="table-scroll">
-              <table className="ledger-table">
-                <thead>
-                  <tr>
-                    <th className="col-date">Date</th>
-                    <th className="col-account">Account</th>
-                    <th>Memo</th>
-                    <th className="num col-amount">Debit</th>
-                    <th className="num col-amount">Credit</th>
-                    <th className="col-source">Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr
-                      key={r.key}
-                      className={r.change ? `row-${r.change.change}` : undefined}
-                      title={r.run_id ? `Loaded by ${r.run_id}` : undefined}
-                    >
-                      <td data-label="Date" className="mono">
-                        {r.change && <span className="visually-hidden">{r.change.change}: </span>}
-                        <Cell row={r} field="date" />
-                      </td>
-                      <td data-label="Account"><Cell row={r} field="account" /></td>
-                      <td data-label="Memo"><Cell row={r} field="memo" /></td>
-                      <td data-label="Debit" className="mono num"><AmountCell row={r} side="debit" /></td>
-                      <td data-label="Credit" className="mono num"><AmountCell row={r} side="credit" /></td>
-                      <td data-label="Source" className="muted source" title={r.source}>{r.source}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="ledger-body">
+              <AccountTree root={tree.root} selected={selected} onSelect={setAccount} />
+              <div className="register">
+                <div className="register-head">
+                  <nav className="crumbs" aria-label="Selected account">
+                    {crumbs.length === 0 ? (
+                      <span className="crumb-current">All accounts</span>
+                    ) : (
+                      <button type="button" className="crumb" onClick={() => setAccount('')}>
+                        All accounts
+                      </button>
+                    )}
+                    {crumbs.map((name, i) => {
+                      const path = crumbs.slice(0, i + 1).join(ACCOUNT_SEP)
+                      return (
+                        <span key={path} className="crumb-part">
+                          <span className="crumb-sep" aria-hidden="true">›</span>
+                          {i === crumbs.length - 1 ? (
+                            <span className="crumb-current" aria-current="true">{name}</span>
+                          ) : (
+                            <button type="button" className="crumb" onClick={() => setAccount(path)}>
+                              {name}
+                            </button>
+                          )}
+                        </span>
+                      )
+                    })}
+                  </nav>
+                  {selected && (
+                    <span className="register-balance">
+                      <span className="muted">Balance</span> <span className="mono">{formatBalance(selectedNode.balance)}</span>
+                    </span>
+                  )}
+                </div>
+                {rows.length === 0 ? (
+                  <p className="empty small">{showChangesOnly ? 'No changes in this account.' : 'No entries in this account.'}</p>
+                ) : (
+                  <div className="table-scroll">
+                    <table className="ledger-table">
+                      <thead>
+                        <tr>
+                          <th className="col-date">Date</th>
+                          {!selectedIsLeaf && <th className="col-account account-cell">Account</th>}
+                          <th>Memo</th>
+                          <th className="num col-amount">Debit</th>
+                          <th className="num col-amount">Credit</th>
+                          {showBalance && <th className="num col-balance">Balance</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr
+                            key={r.key}
+                            className={r.change ? `row-${r.change.change}` : undefined}
+                            title={`${r.source}${r.run_id ? `\nLoaded by ${r.run_id}` : ''}`}
+                          >
+                            <td data-label="Date" className="mono">
+                              {r.change && <span className="visually-hidden">{r.change.change}: </span>}
+                              <Cell row={r} field="date" />
+                            </td>
+                            {!selectedIsLeaf && (
+                              <td data-label="Account" className="account-cell">
+                                <Cell row={r} field="account" show={relativeAccount} />
+                              </td>
+                            )}
+                            <td data-label="Memo">
+                              <div>
+                                <Cell row={r} field="memo" />
+                                {/* On a narrow sheet the account rides under the memo instead of in its own column */}
+                                {!selectedIsLeaf && (
+                                  <span className="memo-account">
+                                    <Cell row={r} field="account" show={relativeAccount} />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td data-label="Debit" className="mono num"><AmountCell row={r} side="debit" /></td>
+                            <td data-label="Credit" className="mono num"><AmountCell row={r} side="credit" /></td>
+                            {showBalance && (
+                              <td data-label="Balance" className="mono num balance">
+                                {r.balance !== undefined && formatBalance(r.balance)}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>
