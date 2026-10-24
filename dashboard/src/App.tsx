@@ -436,11 +436,22 @@ function App() {
   return (
     <main className="page">
       <header className="header">
-        <div>
-          <h1>Local Link</h1>
-          <p className="muted">Connect a local accounting app, extract its books, check them, load the ledger.</p>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          </span>
+          <div>
+            <h1>Local Link</h1>
+            <p className="muted">Connect a local accounting app, extract its books, check them, load the ledger.</p>
+          </div>
         </div>
-        <span className={`badge badge-${status}`}>{BADGE[status]}</span>
+        <span className={`badge badge-${status}`} role="status">
+          <span className="badge-dot" aria-hidden="true" />
+          {BADGE[status]}
+        </span>
       </header>
 
       <form className="card connect" onSubmit={connect}>
@@ -469,21 +480,24 @@ function App() {
           </label>
           <div className="actions">
             <button type="submit" disabled={running}>
+              {running && <span className="spinner" aria-hidden="true" />}
               {running ? 'Connecting…' : 'Connect'}
             </button>
             <button type="button" className="secondary" onClick={() => setPicking((v) => !v)}>
               {picking ? 'Close app list' : 'Pick installed app'}
             </button>
-            <button type="button" className="secondary" onClick={clearData} disabled={running}>
+            <button type="button" className="ghost" onClick={clearData} disabled={running}>
               Clear data
             </button>
           </div>
         </div>
         {picked && (
-          <p className="muted small">
-            {picked.name} {picked.version} · {KIND_LABEL[picked.kind]} ·{' '}
-            <span className="mono">{picked.bundle_id}</span>
-          </p>
+          <div className="picked small">
+            <strong>{picked.name}</strong>
+            <span className="muted">{picked.version}</span>
+            <span className={`kind kind-${picked.kind}`}>{KIND_LABEL[picked.kind]}</span>
+            <span className="mono muted">{picked.bundle_id}</span>
+          </div>
         )}
         {picked && !picking && <DataCandidates app={picked} selected={dataPath} onPick={setDataPath} />}
         {picking && (
@@ -499,14 +513,16 @@ function App() {
       </form>
 
       {(status === 'needs_human' || status === 'error' || status === 'lost') && run && (
-        <section className="alert" role="alert">
-          <h2>{ALERT[status].title}</h2>
-          <p>{ALERT[status].body}</p>
-          <ul className="mono">
-            {run.gap.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
+        <section className={`alert${status === 'error' ? ' alert-error' : ''}`} role="alert">
+          <div className="alert-body">
+            <h2>{ALERT[status].title}</h2>
+            <p>{ALERT[status].body}</p>
+            <ul className="mono">
+              {run.gap.map((g) => (
+                <li key={g}>{g}</li>
+              ))}
+            </ul>
+          </div>
         </section>
       )}
 
@@ -522,7 +538,7 @@ function App() {
             <div className="timer" role="timer" aria-live="off">
               <span className="muted small">{running ? 'Elapsed' : 'Took'}</span>
               <span className="mono timer-value">{formatDuration(elapsed)}</span>
-              {run?.used_cache && <span className="muted small">reused the saved extractor</span>}
+              {run?.used_cache && <span className="cache-tag">Reused saved extractor</span>}
             </div>
           )}
           <ul className="legend small muted" aria-label="Legend">
@@ -531,7 +547,12 @@ function App() {
             <li><span className="dot dot-ok" aria-hidden="true" />Passed</li>
             <li><span className="dot dot-fail" aria-hidden="true" />Failed or blocked</li>
           </ul>
-          {!run && <p className="muted">No run yet. Press Connect to start the agent.</p>}
+          {!run && (
+            <p className="empty">
+              <strong>No run yet</strong>
+              <span className="small">Press Connect to start the agent.</span>
+            </p>
+          )}
           <ol>
             {groupEvents(run?.events ?? []).map((item, idx, items) =>
               item.type === 'event' ? (
@@ -567,7 +588,7 @@ function App() {
           <div className="card-head">
             <div className="card-title">
               <h2>Ledger</h2>
-              <span className="muted small">{ledger.length} rows</span>
+              <span className="count">{ledger.length}</span>
             </div>
             {ledgers.length > 0 && (
               <select
@@ -585,7 +606,10 @@ function App() {
             )}
           </div>
           {ledger.length === 0 ? (
-            <p className="empty">Nothing loaded. Rows appear here only after the checker passes.</p>
+            <p className="empty">
+              <strong>Nothing loaded</strong>
+              <span className="small">Rows appear here only after the checker passes.</span>
+            </p>
           ) : (
             <div className="table-scroll">
               <table className="ledger-table">
@@ -606,9 +630,11 @@ function App() {
                       <td data-label="Date" className="mono">{r.date}</td>
                       <td data-label="Account">{r.account}</td>
                       <td data-label="Amount" className="mono num">{r.amount}</td>
-                      <td data-label="Dr/Cr">{r.side === 'debit' ? 'Debit' : 'Credit'}</td>
+                      <td data-label="Dr/Cr">
+                        <span className={`side side-${r.side}`}>{r.side === 'debit' ? 'Debit' : 'Credit'}</span>
+                      </td>
                       <td data-label="Memo">{r.memo}</td>
-                      <td data-label="Source" className="muted">{r.source}</td>
+                      <td data-label="Source" className="muted source" title={r.source}>{r.source}</td>
                       <td data-label="Run ID" className="mono muted">{r.run_id}</td>
                     </tr>
                   ))}
