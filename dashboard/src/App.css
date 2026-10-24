@@ -1,7 +1,7 @@
 .page {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 32px 16px;
+  padding: 32px 24px 48px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -16,9 +16,10 @@
 }
 
 .header h1 {
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  letter-spacing: -0.02em;
 }
+.header p { margin-top: 2px; }
 
 .muted {
   color: var(--muted);
@@ -41,6 +42,7 @@
   font-weight: 600;
   font-size: 13px;
   border: 1px solid;
+  white-space: nowrap;
 }
 .badge-idle { background: #f3f4f6; color: #374151; border-color: var(--border); }
 .badge-running { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
@@ -52,12 +54,13 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 
 .card h2,
@@ -68,9 +71,20 @@
 
 .card-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.card-title {
+  display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 10px;
+}
+.run-id {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .fields {
@@ -85,15 +99,26 @@
   flex-direction: column;
   gap: 6px;
   flex: 1 1 200px;
+  min-width: 0;
 }
 .field-wide { flex: 3 1 320px; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 1 auto;
+}
 .field span {
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
 }
 
-input {
+input,
+select {
+  width: 100%;
+  min-width: 0;
   height: 44px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
@@ -101,6 +126,14 @@ input {
   font: inherit;
   color: var(--text);
   background: var(--surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:hover,
+select:hover { border-color: #9ca3af; }
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+  outline: none;
 }
 input.mono { font-family: var(--mono); font-size: 13px; }
 
@@ -113,11 +146,15 @@ button {
   color: #fff;
   font: inherit;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
 }
+button:hover:not(:disabled) { background: #1e40af; }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 input:focus-visible,
+select:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -125,6 +162,7 @@ button:focus-visible {
 
 .request-error {
   color: var(--bad);
+  overflow-wrap: anywhere;
   font-family: var(--mono);
   font-size: 12px;
 }
@@ -140,16 +178,17 @@ button:focus-visible {
   color: #7c2d12;
 }
 .alert h2 { color: #9a3412; }
-.alert ul { margin: 0; padding-left: 18px; font-size: 12px; }
+.alert ul { margin: 0; padding-left: 18px; font-size: 12px; overflow-wrap: anywhere; }
 
 .columns {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
-  align-items: flex-start;
+  align-items: start;
 }
-.events { flex: 1 1 340px; }
-.ledger { flex: 999 1 560px; }
+@media (min-width: 1024px) {
+  .columns { grid-template-columns: minmax(320px, 380px) minmax(0, 1fr); }
+}
 
 .events ol {
   list-style: none;
@@ -188,8 +227,23 @@ button:focus-visible {
   border-radius: 8px;
 }
 
-.table-scroll { overflow-x: auto; max-height: 640px; overflow-y: auto; }
-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
+.table-scroll {
+  overflow: auto;
+  max-height: 640px;
+  margin: 0 -20px -20px;
+  border-top: 1px solid var(--border);
+}
+table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 13px; }
+th:first-child,
+td:first-child { padding-left: 20px; }
+th:last-child,
+td:last-child { padding-right: 20px; }
+tbody tr:hover td { background: #f9fafb; }
+/* Keep long account names and memos readable instead of squeezed */
+.ledger-table th:nth-child(2) { min-width: 200px; }
+.ledger-table th:nth-child(5) { min-width: 140px; }
+td.mono,
+td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 th {
   text-align: left;
   font-size: 12px;
@@ -213,7 +267,7 @@ td.mono { font-size: 12px; }
   flex-wrap: wrap;
   gap: 4px 14px;
 }
-.legend li { display: flex; align-items: center; gap: 6px; }
+.legend li { display: flex; white-space: nowrap; align-items: center; gap: 6px; }
 .legend .dot { margin-top: 0; }
 
 .agent-group details { min-width: 0; flex: 1; }
@@ -248,8 +302,9 @@ td.mono { font-size: 12px; }
 
 .timer {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px 8px;
 }
 .timer-value {
   font-size: 20px;
@@ -269,6 +324,7 @@ button.secondary {
   border: 1px solid var(--border-strong);
   font-weight: 500;
 }
+button.secondary:hover:not(:disabled) { background: var(--bg); border-color: #9ca3af; }
 
 .change-counts {
   display: flex;
@@ -300,7 +356,7 @@ button.secondary {
 }
 .diff > li:last-child { border-bottom: 0; }
 .diff-sign { flex: none; width: 12px; font-weight: 700; }
-.diff-body { min-width: 0; flex: 1; }
+.diff-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .diff-added { background: #ecfdf5; }
 .diff-added .diff-sign { color: #047857; }
 .diff-changed { background: #fffbeb; }
@@ -312,8 +368,13 @@ button.secondary {
 .diff-fields ins { color: #047857; text-decoration: none; font-weight: 600; }
 
 .ledger-picker {
-  margin-left: auto;
-  max-width: 60%;
+  flex: 0 1 360px;
+  width: auto;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+  text-overflow: ellipsis;
 }
 
 .app-picker { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -321,10 +382,10 @@ button.secondary {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 320px;
+  max-height: min(360px, 50vh);
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 .app-list li + li { border-top: 1px solid var(--border); }
 .app-item {
@@ -341,9 +402,11 @@ button.secondary {
   background: var(--surface);
   color: var(--text);
   text-align: left;
+  white-space: normal;
 }
-.app-item:hover { background: var(--bg); }
-.app-name { font-weight: 500; }
+.app-item:hover:not(:disabled) { background: var(--bg); }
+.app-item:focus-visible { outline-offset: -2px; }
+.app-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 .app-path { flex-basis: 100%; overflow-wrap: anywhere; }
 .kind {
   margin-left: auto;
@@ -358,5 +421,72 @@ button.secondary {
 .kind-qt { background: #ecfdf5; color: #065f46; }
 .kind-java { background: #fff7ed; color: #9a3412; }
 .app-item-selected { background: #eff6ff; }
-.app-item-selected:hover { background: #dbeafe; }
+.app-item-selected:hover:not(:disabled) { background: #dbeafe; }
 .app-list > li.muted { padding: 8px 10px; }
+
+/* Tablets and narrow windows */
+@media (max-width: 1023px) {
+  .events ol { max-height: 420px; }
+}
+
+/* Phones */
+@media (max-width: 640px) {
+  .page { padding: 20px 12px 32px; gap: 16px; }
+  .header h1 { font-size: 20px; }
+  .card { padding: 16px; gap: 12px; border-radius: 10px; }
+  .alert { padding: 14px 16px; }
+
+  /* 16px stops iOS from zooming into focused fields */
+  input,
+  select { font-size: 16px; }
+  input.mono { font-size: 15px; }
+
+  .field,
+  .field-wide { flex-basis: 100%; }
+  .actions { flex-basis: 100%; }
+  .actions button { flex: 1 1 auto; padding: 0 14px; }
+
+  .ledger-picker { flex: 1 1 100%; font-size: 14px; }
+
+  /* Ledger rows become stacked cards instead of a wide table */
+  .table-scroll { margin: 0; border-top: 0; max-height: 560px; }
+  .ledger-table,
+  .ledger-table tbody,
+  .ledger-table tr,
+  .ledger-table td { display: block; min-width: 0; width: 100%; }
+  .ledger-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .ledger-table tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+  }
+  .ledger-table tr + tr { margin-top: 8px; }
+  .ledger-table tbody tr:hover td { background: none; }
+  .ledger-table td,
+  .ledger-table td:first-child,
+  .ledger-table td:last-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    border: 0;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .ledger-table td::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--muted);
+    text-align: left;
+  }
+  .ledger-table td:empty { display: none; }
+}

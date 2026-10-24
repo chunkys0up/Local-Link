@@ -467,15 +467,17 @@ function App() {
               required
             />
           </label>
-          <button type="submit" disabled={running}>
-            {running ? 'Connecting…' : 'Connect'}
-          </button>
-          <button type="button" className="secondary" onClick={() => setPicking((v) => !v)}>
-            {picking ? 'Close app list' : 'Pick installed app'}
-          </button>
-          <button type="button" className="secondary" onClick={clearData} disabled={running}>
-            Clear data
-          </button>
+          <div className="actions">
+            <button type="submit" disabled={running}>
+              {running ? 'Connecting…' : 'Connect'}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPicking((v) => !v)}>
+              {picking ? 'Close app list' : 'Pick installed app'}
+            </button>
+            <button type="button" className="secondary" onClick={clearData} disabled={running}>
+              Clear data
+            </button>
+          </div>
         </div>
         {picked && (
           <p className="muted small">
@@ -514,7 +516,7 @@ function App() {
         <section className="card events">
           <div className="card-head">
             <h2>Live events</h2>
-            <span className="mono muted small">{run?.run_id}</span>
+            <span className="mono muted small run-id">{run?.run_id}</span>
           </div>
           {elapsed !== null && (
             <div className="timer" role="timer" aria-live="off">
@@ -563,7 +565,10 @@ function App() {
 
         <section className="card ledger">
           <div className="card-head">
-            <h2>Ledger</h2>
+            <div className="card-title">
+              <h2>Ledger</h2>
+              <span className="muted small">{ledger.length} rows</span>
+            </div>
             {ledgers.length > 0 && (
               <select
                 className="ledger-picker mono small"
@@ -578,13 +583,12 @@ function App() {
                 ))}
               </select>
             )}
-            <span className="muted small">{ledger.length} rows</span>
           </div>
           {ledger.length === 0 ? (
             <p className="empty">Nothing loaded. Rows appear here only after the checker passes.</p>
           ) : (
             <div className="table-scroll">
-              <table>
+              <table className="ledger-table">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -599,13 +603,13 @@ function App() {
                 <tbody>
                   {ledger.map((r) => (
                     <tr key={`${r.app}/${r.source}`}>
-                      <td className="mono">{r.date}</td>
-                      <td>{r.account}</td>
-                      <td className="mono num">{r.amount}</td>
-                      <td>{r.side === 'debit' ? 'Debit' : 'Credit'}</td>
-                      <td>{r.memo}</td>
-                      <td className="muted">{r.source}</td>
-                      <td className="mono muted">{r.run_id}</td>
+                      <td data-label="Date" className="mono">{r.date}</td>
+                      <td data-label="Account">{r.account}</td>
+                      <td data-label="Amount" className="mono num">{r.amount}</td>
+                      <td data-label="Dr/Cr">{r.side === 'debit' ? 'Debit' : 'Credit'}</td>
+                      <td data-label="Memo">{r.memo}</td>
+                      <td data-label="Source" className="muted">{r.source}</td>
+                      <td data-label="Run ID" className="mono muted">{r.run_id}</td>
                     </tr>
                   ))}
                 </tbody>
