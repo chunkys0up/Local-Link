@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:droid": "node --env-file-if-exists=.env --test tests/droid.test.ts"
   },
   "dependencies": {
+    "@factory/droid-sdk": "^0.10.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
