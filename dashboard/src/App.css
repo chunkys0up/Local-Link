@@ -1,9 +1,13 @@
 /* Scrolling panels never grow taller than the screen, whatever its shape */
 :root {
   --panel-max: min(720px, max(280px, 70vh));
+  --columns-h: max(480px, min(880px, calc(100vh - 56px)));
 }
 @supports (height: 100dvh) {
-  :root { --panel-max: min(720px, max(280px, 70dvh)); }
+  :root {
+    --panel-max: min(720px, max(280px, 70dvh));
+    --columns-h: max(480px, min(880px, calc(100dvh - 56px)));
+  }
 }
 
 .page {
@@ -28,7 +32,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 20px;
+  padding-bottom: 12px;
+  margin-bottom: -8px;
   border-bottom: 1px solid var(--border);
 }
 .brand {
@@ -177,10 +182,57 @@
   gap: 8px;
   flex: 0 1 auto;
 }
-.field span {
+.field-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text);
+}
+
+/* Search fields with a dropdown of suggestions */
+.combobox { position: relative; min-width: 0; }
+.combobox-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface);
+  /* Same frame as the input it belongs to */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px -4px rgba(17, 24, 39, 0.08);
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: none;
+  font-family: var(--sans);
+  font-size: 14px;
+}
+.combobox-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.combobox-option.active { background: var(--neutral-soft); }
+.combobox-option.active .option-main { color: var(--accent-text); }
+.combobox-note { padding: 8px 12px; font-size: 12px; color: var(--muted); }
+.combobox-note.combobox-error { color: var(--bad-text); }
+.option-main { min-width: 0; overflow-wrap: anywhere; }
+.option-main.mono { font-size: 12.5px; }
+.option-meta { font-size: 12px; color: var(--muted); }
+.option-tag { margin-left: auto; font-size: 12px; color: var(--muted); }
+.option-sub {
+  flex-basis: 100%;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--subtle);
+  overflow-wrap: anywhere;
 }
 
 input,
@@ -262,13 +314,6 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-.picked {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-.picked strong { font-weight: 600; }
 
 .request-error {
   color: var(--bad-text);
@@ -314,7 +359,12 @@ button:focus-visible {
   align-items: start;
 }
 @media (min-width: 1024px) {
-  .columns { grid-template-columns: minmax(340px, 400px) minmax(0, 1fr); }
+  .columns { grid-template-columns: minmax(340px, 400px) minmax(0, 1fr); align-items: stretch; }
+  /* Side by side, both panels share one height and scroll inside themselves */
+  .columns > .card { height: var(--columns-h); }
+  .columns .events > ol,
+  .columns .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
+  .columns .empty { flex: 1; justify-content: center; }
 }
 
 /* Live events timeline */
@@ -326,6 +376,7 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   max-height: var(--panel-max);
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: none;
 }
@@ -394,8 +445,6 @@ button:focus-visible {
 .agent-group summary {
   cursor: pointer;
   list-style: none;
-  margin: -4px -8px;
-  padding: 4px 8px;
 }
 .agent-group summary:hover .event-label { color: var(--accent-text); }
 .agent-group summary::-webkit-details-marker { display: none; }
@@ -456,85 +505,107 @@ button:focus-visible {
   color: var(--subtle);
 }
 
-/* Changes */
-
-.change-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.change-counts { gap: 12px; }
-.diff-added-text { color: var(--ok-text); }
-.diff-changed-text { color: var(--warn-text); }
-.diff-deleted-text { color: var(--bad-text); }
-
-.changes summary { cursor: pointer; color: var(--muted); width: fit-content; }
-.changes summary:hover { color: var(--text); }
-.diff {
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  max-height: min(480px, 60vh);
-  overflow-y: auto;
-  overscroll-behavior: none;
-}
-.diff > li {
-  display: flex;
-  gap: 10px;
-  padding: 9px 14px 9px 11px;
-  border-bottom: 1px solid var(--border);
-  border-left: 3px solid transparent;
-}
-.diff > li:last-child { border-bottom: 0; }
-.diff-sign { flex: none; width: 12px; font-weight: 700; }
-.diff-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.diff-added { background: var(--ok-soft); border-left-color: var(--ok) !important; }
-.diff-added .diff-sign { color: var(--ok-text); }
-.diff-changed { background: var(--warn-soft); border-left-color: var(--warn) !important; }
-.diff-changed .diff-sign { color: var(--warn-text); }
-.diff-deleted { background: var(--bad-soft); border-left-color: var(--bad) !important; }
-.diff-deleted .diff-sign { color: var(--bad-text); }
-.diff-fields { margin: 4px 0; padding-left: 16px; }
-.diff-fields del { color: var(--bad-text); }
-.diff-fields ins { color: var(--ok-text); text-decoration: none; font-weight: 600; }
-
 /* Ledger */
 
-.ledger-picker {
-  flex: 0 1 360px;
-  width: auto;
+.ledger-select { flex: 0 1 320px; min-width: 0; }
+.select-button {
+  width: 100%;
   height: 34px;
   padding: 0 10px;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
   font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+}
+button.select-button:hover:not(:disabled) { background: var(--surface); border-color: var(--subtle); }
+.select-button[aria-expanded='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.select-chevron { flex: none; color: var(--muted); }
+/* The list can be wider than the button; line it up on the right */
+.select .combobox-list {
+  left: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
+}
+.combobox-option.selected .option-main { font-weight: 600; }
+
+.ledger-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: -6px;
+}
+.load-counts { display: inline-flex; flex-wrap: wrap; gap: 0 10px; margin-left: 4px; font-weight: 600; }
+.text-added { color: var(--ok-text); }
+.text-changed { color: var(--warn-text); }
+.text-deleted { color: var(--bad-text); }
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
   cursor: pointer;
-  text-overflow: ellipsis;
+  user-select: none;
+}
+.toggle input { width: 14px; height: 14px; margin: 0; box-shadow: none; accent-color: var(--accent); cursor: pointer; }
+.toggle:has(input:disabled) { color: var(--subtle); cursor: not-allowed; }
+
+/* Rows touched by the last load get a colored edge */
+.ledger-table tr.row-added td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+.ledger-table tr.row-changed td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.ledger-table tr.row-deleted td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.ledger-table tr.row-deleted td { color: var(--muted); text-decoration: line-through; }
+.cell-changed del { color: var(--bad-text); margin-right: 2px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .table-scroll {
-  overflow: auto;
+  /* Anchor anything absolutely positioned in the rows to this box, not the page */
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
   max-height: var(--panel-max);
   overscroll-behavior: none;
   margin: 0 -22px -20px;
   border-top: 1px solid var(--border);
 }
-table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 th:first-child,
 td:first-child { padding-left: 22px; }
 th:last-child,
-td:last-child { padding-right: 22px; }
+td:last-child { padding-right: 12px; }
 tbody tr { transition: background-color 0.1s; }
 tbody tr:hover td { background: var(--surface-hover); }
 /* Keep long account names and memos readable instead of squeezed */
-.ledger-table th:nth-child(2) { min-width: 200px; }
-.ledger-table th:nth-child(5) { min-width: 140px; }
+.col-date { width: 108px; }
+.col-account { width: 28%; }
+.col-amount { width: 100px; }
+.col-source { width: 18%; }
+/* When the ledger box is narrow, drop Source so the text columns keep their room */
+.ledger { container-type: inline-size; }
+@container (max-width: 780px) {
+  .col-source { width: 0; }
+  .ledger-table th:nth-child(6),
+  .ledger-table td:nth-child(6) { display: none; }
+}
+td { overflow-wrap: anywhere; }
 /* Source IDs are long; cut them off and show the full value on hover */
 .ledger-table td.source {
-  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -561,55 +632,6 @@ td.mono { font-size: 12px; }
 td.num { font-weight: 500; }
 .num { text-align: right; }
 
-.side {
-  color: var(--muted);
-}
-
-/* App + data file pickers */
-
-.app-picker { display: flex; flex-direction: column; gap: 8px; }
-.app-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: min(360px, 50vh);
-  overflow-y: auto;
-  overscroll-behavior: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.app-list li + li { border-top: 1px solid var(--border); }
-.app-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  width: 100%;
-  height: auto;
-  padding: 8px 10px;
-  font-weight: 400;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  white-space: normal;
-  box-shadow: none;
-}
-.app-item:hover:not(:disabled) { background: var(--surface-hover); }
-.app-item:active:not(:disabled) { transform: none; }
-.app-item:focus-visible { outline-offset: -2px; }
-.app-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
-.app-path { flex-basis: 100%; overflow-wrap: anywhere; color: var(--subtle); }
-.kind {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--muted);
-}
-.app-item-selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
-.app-item-selected:hover:not(:disabled) { background: var(--accent-soft); }
-.app-list > li.muted { padding: 8px 10px; }
 
 /* Tablets and narrow windows */
 @media (max-width: 1023px) {
@@ -619,7 +641,7 @@ td.num { font-weight: 500; }
 /* Short screens, e.g. phones in landscape */
 @media (max-height: 560px) {
   .page { padding-top: max(16px, env(safe-area-inset-top)); gap: 16px; }
-  .header { padding-bottom: 12px; }
+  .header { padding-bottom: 8px; }
 }
 
 /* Very wide screens: give the events column a bit more room */
@@ -653,7 +675,8 @@ td.num { font-weight: 500; }
   .actions { flex-basis: 100%; }
   .actions button { flex: 1 1 auto; padding: 0 14px; }
 
-  .ledger-picker { flex: 1 1 100%; font-size: 14px; }
+  .ledger-select { flex: 1 1 100%; }
+  .select-button { height: 44px; font-size: 14px; }
 
   /* Ledger rows become stacked cards instead of a wide table */
   .table-scroll { margin: 0; border-top: 0; border-radius: 0; }
@@ -661,6 +684,7 @@ td.num { font-weight: 500; }
   .ledger-table tbody,
   .ledger-table tr,
   .ledger-table td { display: block; min-width: 0; width: 100%; }
+  .ledger-table colgroup { display: none; }
   .ledger-table thead {
     position: absolute;
     width: 1px;
@@ -674,6 +698,10 @@ td.num { font-weight: 500; }
     padding: 6px 12px;
   }
   .ledger-table tr + tr { margin-top: 8px; }
+  .ledger-table tr.row-added { border-left: 3px solid var(--ok); }
+  .ledger-table tr.row-changed { border-left: 3px solid var(--warn); }
+  .ledger-table tr.row-deleted { border-left: 3px solid var(--bad); }
+  .ledger-table tr td:first-child { box-shadow: none !important; }
   .ledger-table tbody tr:hover td { background: none; }
   .ledger-table td,
   .ledger-table td:first-child,
@@ -696,4 +724,50 @@ td.num { font-weight: 500; }
     text-align: left;
   }
   .ledger-table td:empty { display: none; }
+}
+
+/* Scrolling areas get a slim scrollbar in its own gutter at the card's edge,
+   instead of the macOS overlay bar floating over the text */
+.events > ol,
+.table-scroll,
+.combobox-list {
+  scrollbar-gutter: stable;
+}
+.events > ol {
+  margin-right: -22px;
+  padding-right: 12px;
+}
+.events > ol::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar,
+.combobox-list::-webkit-scrollbar {
+  width: 10px;
+}
+.events > ol::-webkit-scrollbar-track,
+.table-scroll::-webkit-scrollbar-track,
+.combobox-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.events > ol::-webkit-scrollbar-thumb,
+.table-scroll::-webkit-scrollbar-thumb,
+.combobox-list::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--border-strong) padding-box;
+}
+.events > ol::-webkit-scrollbar-thumb:hover,
+.table-scroll::-webkit-scrollbar-thumb:hover,
+.combobox-list::-webkit-scrollbar-thumb:hover {
+  background: var(--subtle) padding-box;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .events > ol,
+  .table-scroll,
+  .combobox-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+@media (max-width: 640px) {
+  .events > ol { margin-right: -16px; padding-right: 6px; }
 }

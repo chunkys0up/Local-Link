@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import './App.css'
 
 // 'lost' is set by the dashboard, not the runner: the run vanished (runner restarted)
@@ -74,13 +74,23 @@ type LedgerRow = {
   run_id: string
 }
 
+// Status of the latest run, shown in the header.
 const BADGE: Record<Status | 'idle', string> = {
-  idle: 'Not connected',
+  idle: 'No runs yet',
   running: 'Running…',
-  passed: 'Pass',
-  needs_human: 'Needs human',
-  error: 'Error',
+  passed: 'Last run passed',
+  needs_human: 'Needs review',
+  error: 'Last run failed',
   lost: 'Run lost',
+}
+
+const BADGE_HINT: Record<Status | 'idle', string> = {
+  idle: 'Connect an app to start a run.',
+  running: 'The agent is extracting and checking the books.',
+  passed: 'The books reconciled and the rows were loaded into the ledger.',
+  needs_human: 'The books did not reconcile after one repair attempt. Nothing was loaded.',
+  error: 'The run stopped with an error. Nothing was loaded.',
+  lost: 'The dashboard lost track of the run.',
 }
 
 const ALERT: Record<'needs_human' | 'error' | 'lost', { title: string; body: string }> = {
@@ -155,111 +165,257 @@ function EventRow({ event, start }: { event: RunEvent; start: number }) {
   )
 }
 
-const CHANGE_SIGN = { added: '+', changed: '~', deleted: '−' } as const
-const FIELD_NAMES = ['date', 'account', 'amount', 'side', 'memo'] as const
-const OPEN_CHANGES_UP_TO = 20
+// A ledger row as shown in the table, marked with what the last load did to it.
+type DisplayRow = { key: string; fields: ChangeFields; source: string; run_id: string; change?: Change }
 
-function describeRow(r: ChangeFields): string {
-  return `${r.date} · ${r.account} · ${r.side} ${r.amount}${r.memo ? ` · ${r.memo}` : ''}`
-}
-
-// GitHub-style view of what a load did to the ledger: + added, ~ changed, − deleted.
-function ChangesPanel({ changes }: { changes: Changes }) {
-  const total = changes.added + changes.changed + changes.deleted
+// A cell's value; for a changed row, the old value is shown struck through before it.
+function Cell({ row, field }: { row: DisplayRow; field: 'date' | 'account' | 'memo' }) {
+  const c = row.change
+  const value = row.fields[field]
+  if (c?.change !== 'changed' || !c.before || c.before[field] === value) return <>{value}</>
   return (
-    <section className="card changes" aria-labelledby="changes-h">
-      <div className="card-head">
-        <h2 id="changes-h">Changes in this load</h2>
-        <span className="mono change-counts">
-          <span className="diff-added-text">+{changes.added} added</span>
-          <span className="diff-changed-text">~{changes.changed} changed</span>
-          <span className="diff-deleted-text">−{changes.deleted} deleted</span>
-        </span>
-      </div>
-      {total === 0 ? (
-        <p className="muted">No changes since the last load.</p>
-      ) : (
-        <details open={total <= OPEN_CHANGES_UP_TO}>
-          <summary className="small">
-            {total} {total === 1 ? 'row' : 'rows'} affected
-          </summary>
-          <ul className="diff">
-            {changes.items.map((c) => {
-              const row = (c.after ?? c.before) as ChangeFields
-              return (
-                <li key={`${c.change}:${c.source}`} className={`diff-${c.change}`}>
-                  <span className="diff-sign mono" aria-label={c.change}>
-                    {CHANGE_SIGN[c.change]}
-                  </span>
-                  <div className="diff-body">
-                    <div>{describeRow(row)}</div>
-                    {c.change === 'changed' && c.before && c.after && (
-                      <ul className="diff-fields small">
-                        {FIELD_NAMES.filter((f) => c.before![f] !== c.after![f]).map((f) => (
-                          <li key={f}>
-                            {f}: <del>{c.before![f] || '(empty)'}</del> → <ins>{c.after![f] || '(empty)'}</ins>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="mono muted small event-detail">{c.source}</div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-          {changes.items.length < total && (
-            <p className="muted small">
-              Showing the first {changes.items.length} of {total}.
-            </p>
-          )}
-        </details>
-      )}
-    </section>
+    <span className="cell-changed">
+      <del>{c.before[field] || '(empty)'}</del> {value}
+    </span>
   )
 }
 
-// Searchable list of the apps the runner found on this machine.
-function AppPicker({ onPick }: { onPick: (app: InstalledApp) => void }) {
-  const [apps, setApps] = useState<InstalledApp[] | null>(null)
-  const [query, setQuery] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getJson<{ apps: InstalledApp[] }>('/api/apps')
-      .then((data) => setApps(data.apps))
-      .catch((e: Error) => setError(e.message))
-  }, [])
-
-  const q = query.trim().toLowerCase()
-  const shown = (apps ?? []).filter(
-    (a) => !q || [a.name, a.bundle_id, KIND_LABEL[a.kind]].some((v) => v.toLowerCase().includes(q)),
+// The amount if the row sits on this side; for a changed row, the old amount on this side too.
+function AmountCell({ row, side }: { row: DisplayRow; side: ChangeFields['side'] }) {
+  const now = row.fields.side === side ? row.fields.amount : ''
+  const before = row.change?.change === 'changed' && row.change.before?.side === side ? row.change.before.amount : ''
+  if (!before || before === now) return <>{now}</>
+  return (
+    <span className="cell-changed">
+      <del>{before}</del> {now}
+    </span>
   )
+}
+
+type SelectOption = { value: string; label: ReactNode; display: ReactNode }
+
+// A pick-one dropdown that looks like the search fields (no typing).
+function Select({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  id: string
+  label: string
+  value: string
+  options: SelectOption[]
+  onChange: (value: string) => void
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const current = options.findIndex((o) => o.value === value)
+
+  function openList() {
+    setOpen(true)
+    setActive(Math.max(current, 0))
+  }
+
+  function choose(i: number) {
+    if (options[i]) onChange(options[i].value)
+    setOpen(false)
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) openList()
+      else setActive((a) => (e.key === 'ArrowDown' ? Math.min(a + 1, options.length - 1) : Math.max(a - 1, 0)))
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      if (open) choose(active)
+      else openList()
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault()
+      setOpen(false)
+    }
+  }
 
   return (
-    <div className="app-picker">
-      <input
-        placeholder="Search installed apps"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        aria-label="Search installed apps"
-        autoFocus
-      />
-      {error && <p className="request-error">{error}</p>}
-      {!apps && !error && <p className="muted small">Scanning this Mac…</p>}
-      {apps && (
-        <ul className="app-list">
-          {shown.map((a) => (
-            <li key={a.path}>
-              <button type="button" className="app-item" onClick={() => onPick(a)}>
-                <span className="app-name">{a.name}</span>
-                <span className="muted small">{a.version}</span>
-                <span className={`kind kind-${a.kind}`}>{KIND_LABEL[a.kind]}</span>
-                <span className="mono muted small app-path">{a.path}</span>
-              </button>
+    <div
+      className={`combobox select${className ? ` ${className}` : ''}`}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false)
+      }}
+    >
+      <button
+        type="button"
+        id={id}
+        className="select-button"
+        role="combobox"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-list`}
+        aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined}
+        onClick={() => (open ? setOpen(false) : openList())}
+        onKeyDown={onKeyDown}
+      >
+        <span className="select-value">{options[current]?.display}</span>
+        <svg className="select-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <ul id={`${id}-list`} role="listbox" aria-label={label} className="combobox-list">
+          {options.map((o, i) => (
+            <li
+              key={o.value}
+              id={`${id}-opt-${i}`}
+              role="option"
+              aria-selected={i === current}
+              className={`combobox-option${i === active ? ' active' : ''}${i === current ? ' selected' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => choose(i)}
+            >
+              {o.label}
             </li>
           ))}
-          {shown.length === 0 && <li className="muted small">No apps match.</li>}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+type ComboboxProps<T> = {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  // null while loading
+  items: T[] | null
+  filter: (item: T, query: string) => boolean
+  itemKey: (item: T) => string
+  itemValue: (item: T) => string
+  renderItem: (item: T) => ReactNode
+  onSelect?: (item: T) => void
+  empty: string
+  loading: string
+  error?: string | null
+  placeholder?: string
+  className?: string
+}
+
+// A text field with a search dropdown. Free text is always allowed; picking a
+// suggestion just fills the field in.
+function Combobox<T>({
+  id,
+  value,
+  onChange,
+  items,
+  filter,
+  itemKey,
+  itemValue,
+  renderItem,
+  onSelect,
+  empty,
+  loading,
+  error,
+  placeholder,
+  className,
+}: ComboboxProps<T>) {
+  const [open, setOpen] = useState(false)
+  // What was typed since the dropdown opened; until then every suggestion shows.
+  const [query, setQuery] = useState<string | null>(null)
+  const [active, setActive] = useState(-1)
+
+  const q = (query ?? '').trim().toLowerCase()
+  const shown = (items ?? []).filter((item) => !q || filter(item, q))
+  // Typing something that matches nothing is fine (it's a custom value), so hide the list.
+  const visible = open && !(q && items && items.length > 0 && shown.length === 0)
+
+  function close() {
+    setOpen(false)
+    setQuery(null)
+    setActive(-1)
+  }
+
+  function choose(item: T) {
+    onChange(itemValue(item))
+    onSelect?.(item)
+    close()
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen(true)
+      setActive((a) => Math.min(a + 1, shown.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((a) => Math.max(a - 1, 0))
+    } else if (e.key === 'Enter' && visible && shown[active]) {
+      e.preventDefault()
+      choose(shown[active])
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault()
+      close()
+    }
+  }
+
+  return (
+    <div
+      className="combobox"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close()
+      }}
+    >
+      <input
+        id={id}
+        className={className}
+        role="combobox"
+        aria-expanded={visible}
+        aria-controls={`${id}-list`}
+        aria-autocomplete="list"
+        aria-activedescendant={visible && active >= 0 ? `${id}-opt-${active}` : undefined}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={placeholder}
+        value={value}
+        required
+        onChange={(e) => {
+          onChange(e.target.value)
+          setQuery(e.target.value)
+          setOpen(true)
+          setActive(0)
+        }}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+      />
+      {visible && (
+        <ul id={`${id}-list`} role="listbox" className="combobox-list">
+          {error ? (
+            <li className="combobox-note combobox-error">{error}</li>
+          ) : items === null ? (
+            <li className="combobox-note">{loading}</li>
+          ) : shown.length === 0 ? (
+            <li className="combobox-note">{empty}</li>
+          ) : (
+            shown.map((item, i) => (
+              <li
+                key={itemKey(item)}
+                id={`${id}-opt-${i}`}
+                role="option"
+                aria-selected={i === active}
+                className={`combobox-option${i === active ? ' active' : ''}`}
+                // Keep focus in the input so blur doesn't close the list before the click lands
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(item)}
+              >
+                {renderItem(item)}
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>
@@ -274,58 +430,23 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-// Data files the runner found for the picked app. Nothing is read until one is chosen.
-function DataCandidates({ app, selected, onPick }: { app: InstalledApp; selected: string; onPick: (path: string) => void }) {
-  const [found, setFound] = useState<DataCandidate[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setFound(null)
-    setError(null)
-    getJson<{ candidates: DataCandidate[] }>(`/api/apps/data?path=${encodeURIComponent(app.path)}`)
-      .then((data) => setFound(data.candidates))
-      .catch((e: Error) => setError(e.message))
-  }, [app.path])
-
-  return (
-    <div className="app-picker">
-      <span className="muted small">Data files found for {app.name}. Pick one, or type a path above.</span>
-      {error && <p className="request-error">{error}</p>}
-      {!found && !error && <p className="muted small">Looking for data files…</p>}
-      {found && (
-        <ul className="app-list">
-          {found.map((c) => (
-            <li key={c.path}>
-              <button
-                type="button"
-                className={`app-item${c.path === selected ? ' app-item-selected' : ''}`}
-                onClick={() => onPick(c.path)}
-              >
-                <span className="mono app-name">{c.path.split('/').pop()}</span>
-                <span className="muted small">{formatSize(c.size)}</span>
-                <span className="muted small">{new Date(c.modified * 1000).toLocaleString()}</span>
-                <span className="kind">{c.reason}</span>
-                <span className="mono muted small app-path">{c.path}</span>
-              </button>
-            </li>
-          ))}
-          {found.length === 0 && <li className="muted small">No data files found. Type the path above.</li>}
-        </ul>
-      )}
-    </div>
-  )
+function fileName(path: string): string {
+  return path.split('/').pop() ?? path
 }
 
 function App() {
-  const [app, setApp] = useState('gnucash')
+  const [app, setApp] = useState('')
   const [dataPath, setDataPath] = useState('')
-  const [picking, setPicking] = useState(false)
-  const [picked, setPicked] = useState<InstalledApp | null>(null)
+  const [apps, setApps] = useState<InstalledApp[] | null>(null)
+  const [appsError, setAppsError] = useState<string | null>(null)
+  // Data files found for one app, keyed by the app's path so stale results are ignored.
+  const [found, setFound] = useState<{ appPath: string; candidates: DataCandidate[] | null; error: string | null } | null>(null)
   const [run, setRun] = useState<RunSnapshot | null>(null)
   const [ledgers, setLedgers] = useState<LedgerInfo[]>([])
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
+  const [changesOnly, setChangesOnly] = useState(false)
 
   // Refresh the list of ledgers, then show `show` (or keep the current one, or the newest).
   const loadLedgers = useCallback(async (show?: string) => {
@@ -347,6 +468,25 @@ function App() {
       .then((data) => setLedger(data.rows))
       .catch((e: Error) => setRequestError(e.message))
   }, [ledgerId, ledgers])
+
+  useEffect(() => {
+    getJson<{ apps: InstalledApp[] }>('/api/apps')
+      .then((data) => setApps(data.apps))
+      .catch((e: Error) => setAppsError(e.message))
+  }, [])
+
+  // The installed app the name field refers to, whether picked or typed.
+  const picked = apps?.find((a) => a.name.toLowerCase() === app.trim().toLowerCase()) ?? null
+  const pickedPath = picked?.path
+
+  // Nothing is read from these files until one is chosen and Connect is pressed.
+  useEffect(() => {
+    if (!pickedPath) return
+    getJson<{ candidates: DataCandidate[] }>(`/api/apps/data?path=${encodeURIComponent(pickedPath)}`)
+      .then((data) => setFound({ appPath: pickedPath, candidates: data.candidates, error: null }))
+      .catch((e: Error) => setFound({ appPath: pickedPath, candidates: [], error: e.message }))
+  }, [pickedPath])
+  const candidates = !picked ? [] : found?.appPath === picked.path ? found.candidates : null
 
   // Show the latest run and its ledger on first load.
   useEffect(() => {
@@ -433,6 +573,22 @@ function App() {
 
   const status = run?.status ?? 'idle'
 
+  // What the latest load did, if it was a load into the ledger on screen.
+  const lastLoad = run?.changes && run.ledger_id === ledgerId ? run.changes : null
+  const lastLoadTotal = lastLoad ? lastLoad.added + lastLoad.changed + lastLoad.deleted : 0
+  const showChangesOnly = changesOnly && lastLoadTotal > 0
+  const changeBySource = new Map((lastLoad?.items ?? []).map((c) => [c.source, c]))
+  const ledgerBySource = new Map(ledger.map((r) => [r.source, r]))
+  const rows: DisplayRow[] = showChangesOnly
+    ? (lastLoad?.items ?? []).map((c) => ({
+        key: `${c.change}:${c.source}`,
+        fields: (c.after ?? c.before) as ChangeFields,
+        source: c.source,
+        run_id: ledgerBySource.get(c.source)?.run_id ?? '',
+        change: c,
+      }))
+    : ledger.map((r) => ({ key: `${r.app}/${r.source}`, fields: r, source: r.source, run_id: r.run_id, change: changeBySource.get(r.source) }))
+
   return (
     <main className="page">
       <header className="header">
@@ -448,7 +604,7 @@ function App() {
             <p className="muted">Connect a local accounting app, extract its books, check them, load the ledger.</p>
           </div>
         </div>
-        <span className={`badge badge-${status}`} role="status">
+        <span className={`badge badge-${status}`} role="status" title={BADGE_HINT[status]}>
           <span className="badge-dot" aria-hidden="true" />
           {BADGE[status]}
         </span>
@@ -457,58 +613,67 @@ function App() {
       <form className="card connect" onSubmit={connect}>
         <h2>Connect an app</h2>
         <div className="fields">
-          <label className="field">
-            <span>App name</span>
-            <input
+          <div className="field">
+            <label className="field-label" htmlFor="app">App</label>
+            <Combobox
+              id="app"
               value={app}
-              onChange={(e) => {
-                setApp(e.target.value)
-                setPicked(null)
-              }}
-              required
+              onChange={setApp}
+              items={apps}
+              filter={(a, q) => [a.name, a.bundle_id, KIND_LABEL[a.kind]].some((v) => v.toLowerCase().includes(q))}
+              itemKey={(a) => a.path}
+              itemValue={(a) => a.name}
+              renderItem={(a) => (
+                <>
+                  <span className="option-main">{a.name}</span>
+                  <span className="option-meta">{a.version}</span>
+                  <span className="option-tag">{KIND_LABEL[a.kind]}</span>
+                </>
+              )}
+              onSelect={() => setDataPath('')}
+              placeholder="Search installed apps"
+              loading="Scanning this Mac…"
+              empty="No installed apps found. Type the app name."
+              error={appsError}
             />
-          </label>
-          <label className="field field-wide">
-            <span>Data path (read-only to the agent)</span>
-            <input
+          </div>
+          <div className="field field-wide">
+            <label className="field-label" htmlFor="data-path">Data path <span className="muted">· read-only to the agent</span></label>
+            <Combobox
+              id="data-path"
               className="mono"
               value={dataPath}
-              onChange={(e) => setDataPath(e.target.value)}
-              placeholder="/Users/you/Documents/books.gnucash"
-              required
+              onChange={setDataPath}
+              items={candidates}
+              filter={(c, q) => c.path.toLowerCase().includes(q)}
+              itemKey={(c) => c.path}
+              itemValue={(c) => c.path}
+              renderItem={(c) => (
+                <>
+                  <span className="option-main mono">{fileName(c.path)}</span>
+                  <span className="option-meta">
+                    {formatSize(c.size)} · {new Date(c.modified * 1000).toLocaleDateString()}
+                  </span>
+                  <span className="option-tag">{c.reason}</span>
+                  <span className="option-sub">{c.path}</span>
+                </>
+              )}
+              placeholder={picked ? `Search ${picked.name} data files, or type a path` : '/Users/you/Documents/books.gnucash'}
+              loading={`Looking for ${picked?.name ?? 'app'} data files…`}
+              empty={picked ? `No data files found for ${picked.name}. Type the path.` : 'Pick an installed app to see its data files, or type a path.'}
+              error={found?.appPath === picked?.path ? found?.error : null}
             />
-          </label>
+          </div>
           <div className="actions">
             <button type="submit" disabled={running}>
               {running && <span className="spinner" aria-hidden="true" />}
               {running ? 'Connecting…' : 'Connect'}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPicking((v) => !v)}>
-              {picking ? 'Close app list' : 'Pick installed app'}
             </button>
             <button type="button" className="ghost" onClick={clearData} disabled={running}>
               Clear data
             </button>
           </div>
         </div>
-        {picked && (
-          <div className="picked small">
-            <strong>{picked.name}</strong>
-            <span className="muted">{picked.version}</span>
-            <span className={`kind kind-${picked.kind}`}>{KIND_LABEL[picked.kind]}</span>
-            <span className="mono muted">{picked.bundle_id}</span>
-          </div>
-        )}
-        {picked && !picking && <DataCandidates app={picked} selected={dataPath} onPick={setDataPath} />}
-        {picking && (
-          <AppPicker
-            onPick={(a) => {
-              setApp(a.name)
-              setPicked(a)
-              setPicking(false)
-            }}
-          />
-        )}
         {requestError && <p className="request-error">{requestError}</p>}
       </form>
 
@@ -525,8 +690,6 @@ function App() {
           </div>
         </section>
       )}
-
-      {run?.changes && <ChangesPanel changes={run.changes} />}
 
       <div className="columns">
         <section className="card events">
@@ -591,21 +754,54 @@ function App() {
               <span className="count">{ledger.length}</span>
             </div>
             {ledgers.length > 0 && (
-              <select
-                className="ledger-picker mono small"
-                aria-label="Ledger"
+              <Select
+                id="ledger"
+                label="Ledger"
+                className="ledger-select"
                 value={ledgerId ?? ''}
-                onChange={(e) => setLedgerId(e.target.value)}
-              >
-                {ledgers.map((l) => (
-                  <option key={l.id} value={l.id} title={l.data_path}>
-                    {l.app} · {l.data_path.split('/').pop()} ({l.rows})
-                  </option>
-                ))}
-              </select>
+                onChange={setLedgerId}
+                options={ledgers.map((l) => ({
+                  value: l.id,
+                  display: (
+                    <>
+                      {l.app} · <span className="mono">{fileName(l.data_path)}</span>
+                    </>
+                  ),
+                  label: (
+                    <>
+                      <span className="option-main">{l.app}</span>
+                      <span className="option-meta mono">{fileName(l.data_path)}</span>
+                      <span className="option-tag">{l.rows} rows</span>
+                      <span className="option-sub">{l.data_path}</span>
+                    </>
+                  ),
+                }))}
+              />
             )}
           </div>
-          {ledger.length === 0 ? (
+          {lastLoad && (
+            <div className="ledger-toolbar small">
+              <p className="muted">
+                Last load{' '}
+                <span className="mono load-counts">
+                  <span className="text-added">+{lastLoad.added} added</span>
+                  <span className="text-changed">~{lastLoad.changed} changed</span>
+                  <span className="text-deleted">−{lastLoad.deleted} deleted</span>
+                </span>
+                {lastLoad.items.length < lastLoadTotal && <> · marking the first {lastLoad.items.length}</>}
+              </p>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={showChangesOnly}
+                  disabled={lastLoadTotal === 0}
+                  onChange={(e) => setChangesOnly(e.target.checked)}
+                />
+                Changes only
+              </label>
+            </div>
+          )}
+          {rows.length === 0 ? (
             <p className="empty">
               <strong>Nothing loaded</strong>
               <span className="small">Rows appear here only after the checker passes.</span>
@@ -613,29 +809,40 @@ function App() {
           ) : (
             <div className="table-scroll">
               <table className="ledger-table">
+                <colgroup>
+                  <col className="col-date" />
+                  <col className="col-account" />
+                  <col />
+                  <col className="col-amount" />
+                  <col className="col-amount" />
+                  <col className="col-source" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th>Account</th>
-                    <th className="num">Amount</th>
-                    <th>Dr/Cr</th>
                     <th>Memo</th>
+                    <th className="num">Debit</th>
+                    <th className="num">Credit</th>
                     <th>Source</th>
-                    <th>Run ID</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.map((r) => (
-                    <tr key={`${r.app}/${r.source}`}>
-                      <td data-label="Date" className="mono">{r.date}</td>
-                      <td data-label="Account">{r.account}</td>
-                      <td data-label="Amount" className="mono num">{r.amount}</td>
-                      <td data-label="Dr/Cr">
-                        <span className={`side side-${r.side}`}>{r.side === 'debit' ? 'Debit' : 'Credit'}</span>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.key}
+                      className={r.change ? `row-${r.change.change}` : undefined}
+                      title={r.run_id ? `Loaded by ${r.run_id}` : undefined}
+                    >
+                      <td data-label="Date" className="mono">
+                        {r.change && <span className="visually-hidden">{r.change.change}: </span>}
+                        <Cell row={r} field="date" />
                       </td>
-                      <td data-label="Memo">{r.memo}</td>
+                      <td data-label="Account"><Cell row={r} field="account" /></td>
+                      <td data-label="Memo"><Cell row={r} field="memo" /></td>
+                      <td data-label="Debit" className="mono num"><AmountCell row={r} side="debit" /></td>
+                      <td data-label="Credit" className="mono num"><AmountCell row={r} side="credit" /></td>
                       <td data-label="Source" className="muted source" title={r.source}>{r.source}</td>
-                      <td data-label="Run ID" className="mono muted">{r.run_id}</td>
                     </tr>
                   ))}
                 </tbody>
