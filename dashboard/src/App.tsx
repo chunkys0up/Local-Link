@@ -722,19 +722,6 @@ function App() {
     }
   }
 
-  async function clearData() {
-    if (!window.confirm('Clear every ledger, its change history and saved extractors? (testing only)')) return
-    setRequestError(null)
-    try {
-      await getJson('/api/reset', { method: 'POST' })
-      setRun(null)
-      setLedgers([])
-      setLedgerId(null)
-    } catch (err) {
-      setRequestError((err as Error).message)
-    }
-  }
-
   const status = run?.status ?? 'idle'
 
   // The newest line of the feed, shown in the collapsed bar
@@ -859,9 +846,6 @@ function App() {
             <button type="submit" disabled={running}>
               {running && <span className="spinner" aria-hidden="true" />}
               {running ? 'Connecting…' : 'Connect'}
-            </button>
-            <button type="button" className="ghost" onClick={clearData} disabled={running}>
-              Clear data
             </button>
           </div>
         </div>

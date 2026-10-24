@@ -36,4 +36,4 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
   `needs_human`, or diff into the ledger.
 - `ledger.py`: one SQLite file per source in `ledgers/<app>-<path hash>.db`, keyed on
   (app, source), plus `ledger_changes` history. Saved extractors stay per app in `cache/`.
-- Data persists across restarts; use `/reset` (or the dashboard's Clear data) to start over.
+- Data persists across restarts; use `POST /reset` to start over.

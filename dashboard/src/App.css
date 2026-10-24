@@ -285,13 +285,6 @@ button.secondary {
 }
 button.secondary:hover:not(:disabled) { background: var(--surface-hover); }
 
-button.ghost {
-  background: transparent;
-  color: var(--muted);
-  font-weight: 500;
-  box-shadow: none;
-}
-button.ghost:hover:not(:disabled) { background: transparent; color: var(--bad-text); }
 
 .spinner {
   width: 14px;
