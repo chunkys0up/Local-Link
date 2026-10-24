@@ -46,3 +46,25 @@ def test_scan_finds_nested_dedupes_and_skips_broken(tmp_path, monkeypatch):
     (tmp_path / "Broken.app").mkdir()
     monkeypatch.setattr(apps, "_spotlight", lambda: [tmp_path / "Zed.app"])
     assert [a["name"] for a in apps.scan((tmp_path,))] == ["Activity Monitor", "Zed"]
+
+
+def test_odd_plist_values_and_unreadable_folders(tmp_path, monkeypatch):
+    app = make_app(tmp_path, "Odd", {"CFBundleName": 3, "CFBundleVersion": "", "CFBundleIdentifier": ["x"]})
+    assert apps.describe(app) == {
+        "name": "Odd", "bundle_id": "", "version": "", "path": str(app), "icon": "", "kind": "native",
+    }
+    (app / "Contents" / "PlugIns").mkdir()
+    (app / "Contents" / "PlugIns").chmod(0)
+    try:
+        assert apps.kind(app) == "native"
+    finally:
+        (app / "Contents" / "PlugIns").chmod(0o755)
+
+
+def test_malformed_plist_is_skipped(tmp_path, monkeypatch):
+    make_app(tmp_path, "Good")
+    bad = tmp_path / "Bad.app" / "Contents"
+    bad.mkdir(parents=True)
+    (bad / "Info.plist").write_bytes(b'<?xml version="1.0"?>\n<plist><dict><key>a</key>\x01</dict></plist>')
+    monkeypatch.setattr(apps, "_spotlight", lambda: [])
+    assert [a["name"] for a in apps.scan((tmp_path,))] == ["Good"]

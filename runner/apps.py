@@ -11,9 +11,10 @@ SPOTLIGHT_TIMEOUT_SECONDS = 10
 
 def _bundles_in(folder: Path) -> list[Path]:
     """.app bundles in a folder and one level of subfolders (e.g. Utilities), not inside apps."""
-    if not folder.is_dir():
+    try:
+        return [*folder.glob("*.app"), *(p for p in folder.glob("*/*.app") if p.parent.suffix != ".app")]
+    except OSError:
         return []
-    return [*folder.glob("*.app"), *(p for p in folder.glob("*/*.app") if p.parent.suffix != ".app")]
 
 
 def _spotlight() -> list[Path]:
@@ -28,7 +29,13 @@ def _spotlight() -> list[Path]:
 
 
 def _names(*folders: Path) -> set[str]:
-    return {p.name for f in folders if f.is_dir() for p in f.iterdir()}
+    names: set[str] = set()
+    for folder in folders:
+        try:
+            names.update(p.name for p in folder.iterdir())
+        except OSError:  # missing, or not readable (common under /System)
+            pass
+    return names
 
 
 def kind(app: Path) -> str:
@@ -51,15 +58,22 @@ def describe(app: Path) -> dict | None:
     try:
         with open(app / "Contents" / "Info.plist", "rb") as f:
             info = plistlib.load(f)
-    except (OSError, plistlib.InvalidFileException, ValueError):
+    except Exception:  # unreadable or malformed plist (bad XML raises ExpatError)
         return None
-    icon = info.get("CFBundleIconFile")
+    if not isinstance(info, dict):
+        return None
+
+    def text(*keys: str) -> str:
+        # Some apps ship odd plists (numbers, empty values), so keep only real strings.
+        return next((v for k in keys if isinstance(v := info.get(k), str) and v.strip()), "")
+
+    icon = text("CFBundleIconFile")
     if icon and not Path(icon).suffix:
         icon += ".icns"
     return {
-        "name": info.get("CFBundleDisplayName") or info.get("CFBundleName") or app.stem,
-        "bundle_id": info.get("CFBundleIdentifier", ""),
-        "version": info.get("CFBundleShortVersionString") or info.get("CFBundleVersion", ""),
+        "name": text("CFBundleDisplayName", "CFBundleName") or app.stem,
+        "bundle_id": text("CFBundleIdentifier"),
+        "version": text("CFBundleShortVersionString", "CFBundleVersion"),
         "path": str(app),
         "icon": str(app / "Contents" / "Resources" / icon) if icon else "",
         "kind": kind(app),
@@ -76,6 +90,10 @@ def scan(dirs: tuple[Path, ...] = APP_DIRS, spotlight: bool = True) -> list[dict
         if resolved in seen:
             continue
         seen.add(resolved)
-        if app := describe(path):
+        try:
+            app = describe(path)
+        except Exception:  # one broken bundle shouldn't break the whole list
+            continue
+        if app:
             found.append(app)
     return sorted(found, key=lambda a: (a["name"].casefold(), a["path"]))

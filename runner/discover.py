@@ -19,7 +19,7 @@ def _info(app: Path) -> dict:
     try:
         with open(app / "Contents" / "Info.plist", "rb") as f:
             return plistlib.load(f)
-    except (OSError, plistlib.InvalidFileException, ValueError):
+    except Exception:  # unreadable or malformed plist (bad XML raises ExpatError)
         return {}
 
 
@@ -28,8 +28,9 @@ def document_extensions(info: dict) -> set[str]:
     return {
         ext.lower().lstrip(".")
         for doc in info.get("CFBundleDocumentTypes") or ()
+        if isinstance(doc, dict)
         for ext in doc.get("CFBundleTypeExtensions") or ()
-        if ext and ext != "*"
+        if isinstance(ext, str) and ext and ext != "*"
     }
 
 
@@ -42,9 +43,12 @@ def _paths_in(value: object) -> list[Path]:
     if isinstance(value, str):
         text = value.removeprefix("file://")
         if text.startswith(("/", "~/")):
-            path = Path(text).expanduser()
-            if path.is_file():
-                return [path]
+            try:
+                path = Path(text).expanduser()
+                if path.is_file():
+                    return [path]
+            except (OSError, RuntimeError, ValueError):
+                pass
     return []
 
 
@@ -81,8 +85,10 @@ def candidates(app_path: str, home: Path = HOME, spotlight: bool = True) -> list
     """Likely data files for the app, most recently modified first."""
     app = Path(app_path)
     info = _info(app)
-    bundle_id = info.get("CFBundleIdentifier", "")
-    name = info.get("CFBundleName") or app.stem
+    bundle_id = info.get("CFBundleIdentifier")
+    bundle_id = bundle_id if isinstance(bundle_id, str) else ""
+    name = info.get("CFBundleName")
+    name = name if isinstance(name, str) and name.strip() else app.stem
     extensions = document_extensions(info)
 
     found: list[tuple[Path, str]] = []
@@ -90,7 +96,7 @@ def candidates(app_path: str, home: Path = HOME, spotlight: bool = True) -> list
         try:
             with open(home / "Library" / "Preferences" / f"{bundle_id}.plist", "rb") as f:
                 found += [(p, "named in the app's preferences") for p in _paths_in(plistlib.load(f))]
-        except (OSError, plistlib.InvalidFileException, ValueError):
+        except Exception:  # unreadable or malformed plist (bad XML raises ExpatError)
             pass
     if spotlight:
         found += [(p, "file type the app opens") for p in _spotlight_extensions(extensions, home)]
@@ -105,9 +111,12 @@ def candidates(app_path: str, home: Path = HOME, spotlight: bool = True) -> list
 
     results: dict[Path, dict] = {}
     for path, reason in found:
-        resolved = path.resolve()
-        if resolved in results or not resolved.is_file():
+        try:
+            resolved = path.resolve()
+            if resolved in results or not resolved.is_file():
+                continue
+            stat = resolved.stat()
+        except OSError:
             continue
-        stat = resolved.stat()
         results[resolved] = {"path": str(resolved), "reason": reason, "size": stat.st_size, "modified": stat.st_mtime}
     return sorted(results.values(), key=lambda c: c["modified"], reverse=True)[:MAX_CANDIDATES]
