@@ -5,6 +5,7 @@ import asyncio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+import apps
 import ledger
 import pipeline
 
@@ -32,6 +33,12 @@ def events(run_id: str | None = None, after: int = 0) -> dict:
     if run is None:
         raise HTTPException(404, "no such run" if run_id else "no runs yet")
     return run.snapshot(after)
+
+
+@app.get("/apps")
+def get_apps() -> dict:
+    """Apps installed on this machine, for the dashboard's app picker."""
+    return {"apps": apps.scan()}
 
 
 @app.get("/ledgers")

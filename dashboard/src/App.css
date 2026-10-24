@@ -315,3 +315,45 @@ button.secondary {
   margin-left: auto;
   max-width: 60%;
 }
+
+.app-picker { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.app-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.app-list li + li { border-top: 1px solid var(--border); }
+.app-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  font-weight: 400;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.app-item:hover { background: var(--bg); }
+.app-name { font-weight: 500; }
+.app-path { flex-basis: 100%; overflow-wrap: anywhere; }
+.kind {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #f3f4f6;
+  color: #374151;
+}
+.kind-electron { background: #eff6ff; color: #1e40af; }
+.kind-gtk,
+.kind-qt { background: #ecfdf5; color: #065f46; }
+.kind-java { background: #fff7ed; color: #9a3412; }

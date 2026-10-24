@@ -43,6 +43,23 @@ type RunSnapshot = {
   events: RunEvent[]
 }
 
+type InstalledApp = {
+  name: string
+  bundle_id: string
+  version: string
+  path: string
+  icon: string
+  kind: 'electron' | 'qt' | 'gtk' | 'java' | 'native'
+}
+
+const KIND_LABEL: Record<InstalledApp['kind'], string> = {
+  electron: 'Electron',
+  qt: 'Qt',
+  gtk: 'GTK',
+  java: 'Java',
+  native: 'Native Mac',
+}
+
 // One ledger per source: the app plus its data path.
 type LedgerInfo = { id: string; app: string; data_path: string; rows: number }
 
@@ -202,9 +219,58 @@ function ChangesPanel({ changes }: { changes: Changes }) {
   )
 }
 
+// Searchable list of the apps the runner found on this machine.
+function AppPicker({ onPick }: { onPick: (app: InstalledApp) => void }) {
+  const [apps, setApps] = useState<InstalledApp[] | null>(null)
+  const [query, setQuery] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getJson<{ apps: InstalledApp[] }>('/api/apps')
+      .then((data) => setApps(data.apps))
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
+  const q = query.trim().toLowerCase()
+  const shown = (apps ?? []).filter(
+    (a) => !q || [a.name, a.bundle_id, KIND_LABEL[a.kind]].some((v) => v.toLowerCase().includes(q)),
+  )
+
+  return (
+    <div className="app-picker">
+      <input
+        placeholder="Search installed apps"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Search installed apps"
+        autoFocus
+      />
+      {error && <p className="request-error">{error}</p>}
+      {!apps && !error && <p className="muted small">Scanning this Mac…</p>}
+      {apps && (
+        <ul className="app-list">
+          {shown.map((a) => (
+            <li key={a.path}>
+              <button type="button" className="app-item" onClick={() => onPick(a)}>
+                <span className="app-name">{a.name}</span>
+                <span className="muted small">{a.version}</span>
+                <span className={`kind kind-${a.kind}`}>{KIND_LABEL[a.kind]}</span>
+                <span className="mono muted small app-path">{a.path}</span>
+              </button>
+            </li>
+          ))}
+          {shown.length === 0 && <li className="muted small">No apps match.</li>}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function App() {
   const [app, setApp] = useState('gnucash')
   const [dataPath, setDataPath] = useState('')
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<InstalledApp | null>(null)
   const [run, setRun] = useState<RunSnapshot | null>(null)
   const [ledgers, setLedgers] = useState<LedgerInfo[]>([])
   const [ledgerId, setLedgerId] = useState<string | null>(null)
@@ -332,7 +398,14 @@ function App() {
         <div className="fields">
           <label className="field">
             <span>App name</span>
-            <input value={app} onChange={(e) => setApp(e.target.value)} required />
+            <input
+              value={app}
+              onChange={(e) => {
+                setApp(e.target.value)
+                setPicked(null)
+              }}
+              required
+            />
           </label>
           <label className="field field-wide">
             <span>Data path (read-only to the agent)</span>
@@ -347,10 +420,28 @@ function App() {
           <button type="submit" disabled={running}>
             {running ? 'Connecting…' : 'Connect'}
           </button>
+          <button type="button" className="secondary" onClick={() => setPicking((v) => !v)}>
+            {picking ? 'Close app list' : 'Pick installed app'}
+          </button>
           <button type="button" className="secondary" onClick={clearData} disabled={running}>
             Clear data
           </button>
         </div>
+        {picked && (
+          <p className="muted small">
+            {picked.name} {picked.version} · {KIND_LABEL[picked.kind]} ·{' '}
+            <span className="mono">{picked.bundle_id}</span>
+          </p>
+        )}
+        {picking && (
+          <AppPicker
+            onPick={(a) => {
+              setApp(a.name)
+              setPicked(a)
+              setPicking(false)
+            }}
+          />
+        )}
         {requestError && <p className="request-error">{requestError}</p>}
       </form>
 

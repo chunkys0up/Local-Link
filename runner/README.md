@@ -13,6 +13,7 @@ uv run --env-file ../.env uvicorn server:app --port 8000   # API (needs FACTORY_
 curl -X POST localhost:8000/connect -H 'Content-Type: application/json' \
   -d '{"app": "gnucash", "data_path": "/path/to/books.gnucash"}'   # -> {"run_id": ...}
 curl "localhost:8000/events?run_id=<id>"   # steps so far, status, and the load's changes
+curl localhost:8000/apps                   # installed Mac apps: name, bundle ID, version, kind
 curl localhost:8000/ledgers                # one ledger per source (app + data path)
 curl "localhost:8000/ledger?ledger_id=<id>" # that ledger's rows
 curl -X POST localhost:8000/reset          # testing: clear ledger, change history, saved extractors
@@ -22,6 +23,8 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
   the app, used to match rows between loads.
 - `checker.py`: rows exist, debits = credits, source IDs unique, no money left in
   suspense-type accounts.
+- `apps.py`: scans /Applications, ~/Applications, /System/Applications and Spotlight;
+  reads each Info.plist and tags the app as electron, qt, gtk, java or native.
 - `layout.py`: fingerprint of the data's structure (SQLite tables/columns, XML element
   paths, CSV headers, JSON keys). A saved extractor is only reused while it's unchanged.
 - `agent.py`: Droid session in its own temp folder outside the project (deleted after the
