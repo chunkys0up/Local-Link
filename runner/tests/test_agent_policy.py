@@ -21,7 +21,7 @@ def patch(path: str) -> dict:
 
 def test_allows_writes_in_scratch():
     assert deny_reason(patch(str(SCRATCH / "extract.py")), SCRATCH) is None
-    assert deny_reason({"type": "create", "filePath": "reference.py"}, SCRATCH) is None
+    assert deny_reason({"type": "create", "filePath": "check.py"}, SCRATCH) is None
 
 
 def test_blocks_writes_to_data_path():
@@ -45,7 +45,7 @@ def test_allows_read_only_commands():
 
 def test_allows_running_scratch_scripts():
     assert deny_reason(execute(f"python3 extract.py {DATA}"), SCRATCH) is None
-    assert deny_reason(execute(f"uv run python {SCRATCH}/reference.py {DATA}"), SCRATCH) is None
+    assert deny_reason(execute(f"uv run python {SCRATCH}/check.py {DATA}"), SCRATCH) is None
 
 
 def test_blocks_other_commands():

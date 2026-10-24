@@ -39,8 +39,12 @@ type RunSnapshot = {
   rows_loaded: number | null
   used_cache: boolean
   changes: Changes | null
+  ledger_id: string
   events: RunEvent[]
 }
+
+// One ledger per source: the app plus its data path.
+type LedgerInfo = { id: string; app: string; data_path: string; rows: number }
 
 type LedgerRow = {
   app: string
@@ -202,19 +206,42 @@ function App() {
   const [app, setApp] = useState('gnucash')
   const [dataPath, setDataPath] = useState('')
   const [run, setRun] = useState<RunSnapshot | null>(null)
+  const [ledgers, setLedgers] = useState<LedgerInfo[]>([])
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
 
-  const loadLedger = useCallback(async () => {
-    const data = await getJson<{ rows: LedgerRow[] }>('/api/ledger')
-    setLedger(data.rows)
+  // Refresh the list of ledgers, then show `show` (or keep the current one, or the newest).
+  const loadLedgers = useCallback(async (show?: string) => {
+    const data = await getJson<{ ledgers: LedgerInfo[] }>('/api/ledgers')
+    setLedgers(data.ledgers)
+    setLedgerId((current) => {
+      const ids = data.ledgers.map((l) => l.id)
+      if (show && ids.includes(show)) return show
+      return current && ids.includes(current) ? current : (ids[0] ?? null)
+    })
   }, [])
 
-  // Show the latest run and the ledger on first load.
   useEffect(() => {
-    getJson<RunSnapshot>('/api/events').then(setRun).catch(() => {})
-    loadLedger().catch((e: Error) => setRequestError(e.message))
-  }, [loadLedger])
+    if (!ledgerId) {
+      setLedger([])
+      return
+    }
+    getJson<{ rows: LedgerRow[] }>(`/api/ledger?ledger_id=${encodeURIComponent(ledgerId)}`)
+      .then((data) => setLedger(data.rows))
+      .catch((e: Error) => setRequestError(e.message))
+  }, [ledgerId, ledgers])
+
+  // Show the latest run and its ledger on first load.
+  useEffect(() => {
+    getJson<RunSnapshot>('/api/events')
+      .then((latest) => {
+        setRun(latest)
+        return loadLedgers(latest.ledger_id)
+      })
+      .catch(() => loadLedgers())
+      .catch((e: Error) => setRequestError(e.message))
+  }, [loadLedgers])
 
   // Poll while a run is in progress; refresh the ledger when it ends. Runs live in
   // the runner's memory, so stop if the run disappears or the runner stays unreachable.
@@ -243,7 +270,7 @@ function App() {
         failures = 0
         setRequestError(null)
         setRun(next)
-        if (next.status !== 'running') await loadLedger()
+        if (next.status !== 'running') await loadLedgers(next.ledger_id)
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           markLost('The runner no longer knows this run (it was probably restarted).')
@@ -258,7 +285,7 @@ function App() {
       }
     }, POLL_MS)
     return () => clearInterval(timer)
-  }, [runId, running, loadLedger])
+  }, [runId, running, loadLedgers])
 
   async function connect(e: FormEvent) {
     e.preventDefault()
@@ -276,12 +303,13 @@ function App() {
   }
 
   async function clearData() {
-    if (!window.confirm('Clear the ledger, its change history and saved extractors? (testing only)')) return
+    if (!window.confirm('Clear every ledger, its change history and saved extractors? (testing only)')) return
     setRequestError(null)
     try {
       await getJson('/api/reset', { method: 'POST' })
       setRun(null)
-      setLedger([])
+      setLedgers([])
+      setLedgerId(null)
     } catch (err) {
       setRequestError((err as Error).message)
     }
@@ -394,6 +422,20 @@ function App() {
         <section className="card ledger">
           <div className="card-head">
             <h2>Ledger</h2>
+            {ledgers.length > 0 && (
+              <select
+                className="ledger-picker mono small"
+                aria-label="Ledger"
+                value={ledgerId ?? ''}
+                onChange={(e) => setLedgerId(e.target.value)}
+              >
+                {ledgers.map((l) => (
+                  <option key={l.id} value={l.id} title={l.data_path}>
+                    {l.app} · {l.data_path.split('/').pop()} ({l.rows})
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="muted small">{ledger.length} rows</span>
           </div>
           {ledger.length === 0 ? (

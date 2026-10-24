@@ -3,7 +3,6 @@ then the checker, one repair, then a row-by-row diff into the ledger."""
 
 import asyncio
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +39,7 @@ class Run:
     rows_loaded: int | None = None
     used_cache: bool = False
     changes: dict | None = None
+    ledger_id: str = ""
 
     def emit(self, kind: str, label: str, detail: str = "") -> None:
         self.events.append(
@@ -56,6 +56,7 @@ class Run:
             "rows_loaded": self.rows_loaded,
             "used_cache": self.used_cache,
             "changes": self.changes,
+            "ledger_id": self.ledger_id,
             "events": self.events[after:],
         }
 
@@ -64,7 +65,12 @@ RUNS: dict[str, Run] = {}
 
 
 def new_run(app: str, data_path: str) -> Run:
-    run = Run(id=f"run_{uuid.uuid4().hex[:8]}", app=app, data_path=data_path)
+    run = Run(
+        id=f"run_{uuid.uuid4().hex[:8]}",
+        app=app,
+        data_path=data_path,
+        ledger_id=ledger.ledger_id(app, data_path),
+    )
     RUNS[run.id] = run
     return run
 
@@ -82,10 +88,6 @@ def reset() -> None:
     RUNS.clear()
     shutil.rmtree(CACHE_DIR, ignore_errors=True)
     ledger.reset()
-
-
-def slug(app: str) -> str:
-    return re.sub(r"[^a-z0-9_-]+", "-", app.lower()).strip("-") or "app"
 
 
 def _run_script(script: Path, data_path: Path) -> object:
@@ -136,13 +138,14 @@ def _summarize_layout_change(added: list[str], removed: list[str]) -> str:
 
 
 def _finish_pass(run: Run, workspace: Path, structure: list[str], rows: list[NormalizedRow]) -> None:
-    cache = CACHE_DIR / slug(run.app)
+    cache = CACHE_DIR / ledger.slug(run.app)
     cache.mkdir(parents=True, exist_ok=True)
     shutil.copy2(workspace / SCRIPT, cache / SCRIPT)
     (cache / LAYOUT_FILE).write_text(json.dumps(structure, indent=1))
 
-    changes = ledger.diff(run.app, rows)
-    ledger.apply(run.app, run.id, changes)
+    db = ledger.path_for(run.ledger_id)
+    changes = ledger.diff(run.app, rows, db)
+    ledger.apply(run.app, run.id, changes, db, str(Path(run.data_path).expanduser().resolve()))
     counts = {kind: sum(c.change == kind for c in changes) for kind in ("added", "changed", "deleted")}
     run.changes = {**counts, "items": [c.as_dict() for c in changes[:MAX_CHANGES_SHOWN]]}
     run.rows_loaded = len(rows)
@@ -170,7 +173,7 @@ async def execute(run: Run) -> None:
         run.emit("info", "Read data layout", f"{len(structure)} structure entries (tables, columns, fields)")
 
         error: list[str] | None = None
-        cache = CACHE_DIR / slug(run.app)
+        cache = CACHE_DIR / ledger.slug(run.app)
         if (cache / SCRIPT).exists() and (cache / LAYOUT_FILE).exists():
             added, removed = layout.diff(json.loads((cache / LAYOUT_FILE).read_text()), structure)
             if added or removed:
@@ -178,7 +181,7 @@ async def execute(run: Run) -> None:
                 run.emit("info", "Not trusting the saved extractor", "rewriting it with the agent")
             else:
                 shutil.copy2(cache / SCRIPT, workspace / SCRIPT)
-                run.emit("info", "Data layout unchanged", f"reusing the saved extractor from cache/{slug(run.app)}")
+                run.emit("info", "Data layout unchanged", f"reusing the saved extractor from cache/{ledger.slug(run.app)}")
                 result, rows = await asyncio.to_thread(evaluate, run, workspace, data_path)
                 if result.passed:
                     run.used_cache = True

@@ -310,3 +310,8 @@ button.secondary {
 .diff-fields { margin: 4px 0; padding-left: 16px; }
 .diff-fields del { color: #b91c1c; }
 .diff-fields ins { color: #047857; text-decoration: none; font-weight: 600; }
+
+.ledger-picker {
+  margin-left: auto;
+  max-width: 60%;
+}

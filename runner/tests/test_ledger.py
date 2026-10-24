@@ -33,7 +33,7 @@ def test_second_load_reports_added_changed_deleted(tmp_path):
     assert changed.before["amount"] == "2.00" and changed.after["amount"] == "20.00"
 
     ledger.apply("app", "run_2", changes, db)
-    assert {(r["source"], r["amount"]) for r in ledger.all_rows(db_path=db)} == {
+    assert {(r["source"], r["amount"]) for r in ledger.all_rows(db)} == {
         ("a", "1.00"), ("b", "20.00"), ("d", "4.00"),
     }
     assert ledger.diff("app", second, db) == []
@@ -52,3 +52,17 @@ def test_history_records_every_change(tmp_path):
     with ledger.connect(db) as conn:
         history = [(r["run_id"], r["change"]) for r in conn.execute("select * from ledger_changes order by id")]
     assert history == [("run_1", "added"), ("run_2", "changed")]
+
+
+def test_each_source_gets_its_own_ledger(tmp_path, monkeypatch):
+    monkeypatch.setattr(ledger, "LEDGERS_DIR", tmp_path / "ledgers")
+    a = ledger.ledger_id("GnuCash", str(tmp_path / "a.gnucash"))
+    b = ledger.ledger_id("GnuCash", str(tmp_path / "b.gnucash"))
+    assert a != b and a.startswith("gnucash-")
+    assert a == ledger.ledger_id("GnuCash", str(tmp_path / "x" / ".." / "a.gnucash"))
+
+    db_a, db_b = ledger.path_for(a), ledger.path_for(b)
+    ledger.apply("GnuCash", "run_1", ledger.diff("GnuCash", [row("s", "1.00")], db_a), db_a, "a.gnucash")
+    assert [c.change for c in ledger.diff("GnuCash", [row("s", "1.00")], db_b)] == ["added"]
+    assert ledger.all_rows(db_b) == []
+    assert [(l["id"], l["data_path"], l["rows"]) for l in ledger.list_ledgers()] == [(a, "a.gnucash", 1)]

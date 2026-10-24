@@ -1,10 +1,14 @@
-"""SQLite ledger of rows that passed the checker, plus a history of every change.
+"""SQLite ledgers of rows that passed the checker, plus a history of every change.
 
-Each load is diffed against what's already there for that app, keyed on source:
-rows are added, changed or deleted, and each change is recorded in ledger_changes.
+Each source (app + data path) gets its own ledger file in ledgers/. Each load is
+diffed against what's already there, keyed on source: rows are added, changed or
+deleted, and each change is recorded in ledger_changes.
 """
 
+import hashlib
 import json
+import re
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -12,7 +16,7 @@ from pathlib import Path
 
 from rows import NormalizedRow
 
-DB_PATH = Path(__file__).parent / "ledger.db"
+LEDGERS_DIR = Path(__file__).parent / "ledgers"
 FIELDS = ("date", "account", "amount", "side", "memo")
 
 SCHEMA = """
@@ -37,7 +41,41 @@ create table if not exists ledger_changes (
     after text,
     at real not null
 );
+create table if not exists ledger_source (
+    id integer primary key check (id = 1),
+    app text not null,
+    data_path text not null
+);
 """
+
+
+def slug(app: str) -> str:
+    return re.sub(r"[^a-z0-9_-]+", "-", app.lower()).strip("-") or "app"
+
+
+def ledger_id(app: str, data_path: str) -> str:
+    """Stable ID for one source: the app plus the resolved data path."""
+    resolved = str(Path(data_path).expanduser().resolve())
+    return f"{slug(app)}-{hashlib.sha1(resolved.encode()).hexdigest()[:8]}"
+
+
+def path_for(ledger: str) -> Path:
+    if not re.fullmatch(r"[a-z0-9_-]+", ledger):
+        raise ValueError(f"bad ledger id: {ledger!r}")
+    return LEDGERS_DIR / f"{ledger}.db"
+
+
+def list_ledgers() -> list[dict]:
+    """Every ledger with its app, data path and row count, most recently loaded first."""
+    found = []
+    for db in sorted(LEDGERS_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
+        with connect(db) as conn:
+            source = conn.execute("select app, data_path from ledger_source").fetchone()
+            count = conn.execute("select count(*) from ledger").fetchone()[0]
+        if source is None:  # created by a diff but never loaded
+            continue
+        found.append({"id": db.stem, "app": source["app"], "data_path": source["data_path"], "rows": count})
+    return found
 
 
 @dataclass
@@ -51,12 +89,10 @@ class Change:
         return {"change": self.change, "source": self.source, "before": self.before, "after": self.after}
 
 
-def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
+def connect(db_path: Path) -> sqlite3.Connection:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    columns = [r[1] for r in conn.execute("pragma table_info(ledger)")]
-    if columns and "source" not in columns[:2]:
-        conn.execute("drop table ledger")  # pre-diff schema; it only held test data
     conn.executescript(SCHEMA)
     return conn
 
@@ -71,7 +107,7 @@ def _fields(row: NormalizedRow) -> dict:
     }
 
 
-def diff(app: str, rows: list[NormalizedRow], db_path: Path = DB_PATH) -> list[Change]:
+def diff(app: str, rows: list[NormalizedRow], db_path: Path) -> list[Change]:
     """What loading these rows would change for this app."""
     with connect(db_path) as conn:
         current = {
@@ -99,10 +135,16 @@ def diff(app: str, rows: list[NormalizedRow], db_path: Path = DB_PATH) -> list[C
     return changes
 
 
-def apply(app: str, run_id: str, changes: list[Change], db_path: Path = DB_PATH) -> None:
+def apply(
+    app: str, run_id: str, changes: list[Change], db_path: Path, data_path: str = ""
+) -> None:
     """Apply a diff atomically and record it in the change history."""
     now = time.time()
     with connect(db_path) as conn:
+        conn.execute(
+            "insert or replace into ledger_source (id, app, data_path) values (1, ?, ?)",
+            (app, data_path),
+        )
         for c in changes:
             if c.change == "deleted":
                 conn.execute("delete from ledger where app = ? and source = ?", (app, c.source))
@@ -124,7 +166,9 @@ def apply(app: str, run_id: str, changes: list[Change], db_path: Path = DB_PATH)
         )
 
 
-def all_rows(limit: int = 1000, db_path: Path = DB_PATH) -> list[dict]:
+def all_rows(db_path: Path, limit: int = 1000) -> list[dict]:
+    if not db_path.exists():
+        return []
     with connect(db_path) as conn:
         cursor = conn.execute(
             "select app, date, account, amount, side, memo, source, run_id"
@@ -134,5 +178,5 @@ def all_rows(limit: int = 1000, db_path: Path = DB_PATH) -> list[dict]:
         return [dict(r) for r in cursor]
 
 
-def reset(db_path: Path = DB_PATH) -> None:
-    db_path.unlink(missing_ok=True)
+def reset() -> None:
+    shutil.rmtree(LEDGERS_DIR, ignore_errors=True)

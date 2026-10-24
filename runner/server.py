@@ -34,9 +34,19 @@ def events(run_id: str | None = None, after: int = 0) -> dict:
     return run.snapshot(after)
 
 
+@app.get("/ledgers")
+def get_ledgers() -> dict:
+    """One ledger per source (app + data path), most recently loaded first."""
+    return {"ledgers": ledger.list_ledgers()}
+
+
 @app.get("/ledger")
-def get_ledger(limit: int = 1000) -> dict:
-    return {"rows": ledger.all_rows(limit)}
+def get_ledger(ledger_id: str, limit: int = 1000) -> dict:
+    try:
+        db = ledger.path_for(ledger_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ledger_id": ledger_id, "rows": ledger.all_rows(db, limit)}
 
 
 @app.post("/reset")
