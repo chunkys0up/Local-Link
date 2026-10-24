@@ -777,20 +777,3 @@ td.num { font-weight: 500; }
 @media (max-width: 640px) {
   .events > ol { margin-right: -16px; padding-right: 6px; }
 }
-
-/* Which file a run or ledger came from, and top-level totals to compare with the app */
-.source-path {
-  margin: -4px 0 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.source-path .muted { margin-right: 4px; }
-.totals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  margin: 0;
-}
-.totals div { min-width: 0; }
-.totals dt { margin: 0; }
-.totals dd { margin: 0; font-weight: 600; }

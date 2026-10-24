@@ -60,12 +60,7 @@ def get_ledger(ledger_id: str, limit: int = 1000) -> dict:
         db = ledger.path_for(ledger_id)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return {
-        "ledger_id": ledger_id,
-        **ledger.source(db),
-        "totals": ledger.totals(db),
-        "rows": ledger.all_rows(db, limit),
-    }
+    return {"ledger_id": ledger_id, "rows": ledger.all_rows(db, limit)}
 
 
 @app.post("/reset")

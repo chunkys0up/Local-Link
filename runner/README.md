@@ -16,7 +16,7 @@ curl "localhost:8000/events?run_id=<id>"   # steps so far, status, and the load'
 curl localhost:8000/apps                   # installed Mac apps: name, bundle ID, version, kind
 curl "localhost:8000/apps/data?path=/Applications/Gnucash.app"  # likely data files for one app
 curl localhost:8000/ledgers                # one ledger per source (app + data path)
-curl "localhost:8000/ledger?ledger_id=<id>" # its rows, source file and top-level account totals
+curl "localhost:8000/ledger?ledger_id=<id>" # that ledger's rows
 curl -X POST localhost:8000/reset          # testing: clear ledger, change history, saved extractors
 ```
 
