@@ -24,8 +24,7 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
   the app, used to match rows between loads.
 - `checker.py`: rows exist, debits = credits, source IDs unique, no money left in
   suspense-type accounts.
-- `apps.py`: scans /Applications, ~/Applications, /System/Applications and Spotlight;
-  reads each Info.plist and tags the app as electron, qt, gtk, java or native.
+- `apps.py`: scans /Applications (and subfolders like Utilities); reads each Info.plist and tags the app as electron, qt, gtk, java or native.
 - `discover.py`: likely data files for a picked app (paths in its preferences plist,
   Spotlight hits for file types it opens, Application Support and its container). The
   user confirms one; only that path goes to the agent.

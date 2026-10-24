@@ -1,12 +1,9 @@
 """Installed Mac apps: name, bundle ID, version, path, icon, and what each is built with."""
 
 import plistlib
-import subprocess
 from pathlib import Path
 
-APP_DIRS = (Path("/Applications"), Path.home() / "Applications", Path("/System/Applications"))
-SPOTLIGHT_QUERY = "kMDItemContentType == 'com.apple.application-bundle'"
-SPOTLIGHT_TIMEOUT_SECONDS = 10
+APPS_DIR = Path("/Applications")
 
 
 def _bundles_in(folder: Path) -> list[Path]:
@@ -15,17 +12,6 @@ def _bundles_in(folder: Path) -> list[Path]:
         return [*folder.glob("*.app"), *(p for p in folder.glob("*/*.app") if p.parent.suffix != ".app")]
     except OSError:
         return []
-
-
-def _spotlight() -> list[Path]:
-    try:
-        proc = subprocess.run(
-            ["mdfind", SPOTLIGHT_QUERY], capture_output=True, text=True, timeout=SPOTLIGHT_TIMEOUT_SECONDS
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    # Skip helpers nested inside other bundles (".../Foo.app/Contents/.../Helper.app").
-    return [Path(line) for line in proc.stdout.splitlines() if line.endswith(".app") and ".app/" not in line]
 
 
 def _names(*folders: Path) -> set[str]:
@@ -80,16 +66,10 @@ def describe(app: Path) -> dict | None:
     }
 
 
-def scan(dirs: tuple[Path, ...] = APP_DIRS, spotlight: bool = True) -> list[dict]:
-    """Every installed app, deduplicated by path, sorted by name."""
-    paths = [p for d in dirs for p in _bundles_in(d)] + (_spotlight() if spotlight else [])
-    seen: set[Path] = set()
+def scan(folder: Path = APPS_DIR) -> list[dict]:
+    """Every app in /Applications (and its subfolders like Utilities), sorted by name."""
     found = []
-    for path in paths:
-        resolved = path.resolve()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
+    for path in _bundles_in(folder):
         try:
             app = describe(path)
         except Exception:  # one broken bundle shouldn't break the whole list
