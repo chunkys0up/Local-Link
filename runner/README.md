@@ -14,6 +14,7 @@ curl -X POST localhost:8000/connect -H 'Content-Type: application/json' \
   -d '{"app": "gnucash", "data_path": "/path/to/books.gnucash"}'   # -> {"run_id": ...}
 curl "localhost:8000/events?run_id=<id>"   # steps so far, status, and the load's changes
 curl localhost:8000/apps                   # installed Mac apps: name, bundle ID, version, kind
+curl "localhost:8000/apps/data?path=/Applications/Gnucash.app"  # likely data files for one app
 curl localhost:8000/ledgers                # one ledger per source (app + data path)
 curl "localhost:8000/ledger?ledger_id=<id>" # that ledger's rows
 curl -X POST localhost:8000/reset          # testing: clear ledger, change history, saved extractors
@@ -25,6 +26,9 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
   suspense-type accounts.
 - `apps.py`: scans /Applications, ~/Applications, /System/Applications and Spotlight;
   reads each Info.plist and tags the app as electron, qt, gtk, java or native.
+- `discover.py`: likely data files for a picked app (paths in its preferences plist,
+  Spotlight hits for file types it opens, Application Support and its container). The
+  user confirms one; only that path goes to the agent.
 - `layout.py`: fingerprint of the data's structure (SQLite tables/columns, XML element
   paths, CSV headers, JSON keys). A saved extractor is only reused while it's unchanged.
 - `agent.py`: Droid session in its own temp folder outside the project (deleted after the

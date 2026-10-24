@@ -266,6 +266,56 @@ function AppPicker({ onPick }: { onPick: (app: InstalledApp) => void }) {
   )
 }
 
+type DataCandidate = { path: string; reason: string; size: number; modified: number }
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+// Data files the runner found for the picked app. Nothing is read until one is chosen.
+function DataCandidates({ app, selected, onPick }: { app: InstalledApp; selected: string; onPick: (path: string) => void }) {
+  const [found, setFound] = useState<DataCandidate[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setFound(null)
+    setError(null)
+    getJson<{ candidates: DataCandidate[] }>(`/api/apps/data?path=${encodeURIComponent(app.path)}`)
+      .then((data) => setFound(data.candidates))
+      .catch((e: Error) => setError(e.message))
+  }, [app.path])
+
+  return (
+    <div className="app-picker">
+      <span className="muted small">Data files found for {app.name}. Pick one, or type a path above.</span>
+      {error && <p className="request-error">{error}</p>}
+      {!found && !error && <p className="muted small">Looking for data files…</p>}
+      {found && (
+        <ul className="app-list">
+          {found.map((c) => (
+            <li key={c.path}>
+              <button
+                type="button"
+                className={`app-item${c.path === selected ? ' app-item-selected' : ''}`}
+                onClick={() => onPick(c.path)}
+              >
+                <span className="mono app-name">{c.path.split('/').pop()}</span>
+                <span className="muted small">{formatSize(c.size)}</span>
+                <span className="muted small">{new Date(c.modified * 1000).toLocaleString()}</span>
+                <span className="kind">{c.reason}</span>
+                <span className="mono muted small app-path">{c.path}</span>
+              </button>
+            </li>
+          ))}
+          {found.length === 0 && <li className="muted small">No data files found. Type the path above.</li>}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function App() {
   const [app, setApp] = useState('gnucash')
   const [dataPath, setDataPath] = useState('')
@@ -433,6 +483,7 @@ function App() {
             <span className="mono">{picked.bundle_id}</span>
           </p>
         )}
+        {picked && !picking && <DataCandidates app={picked} selected={dataPath} onPick={setDataPath} />}
         {picking && (
           <AppPicker
             onPick={(a) => {

@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 import apps
+import discover
 import ledger
 import pipeline
 
@@ -39,6 +40,12 @@ def events(run_id: str | None = None, after: int = 0) -> dict:
 def get_apps() -> dict:
     """Apps installed on this machine, for the dashboard's app picker."""
     return {"apps": apps.scan()}
+
+
+@app.get("/apps/data")
+def get_app_data(path: str) -> dict:
+    """Likely data files for one installed app; the user confirms one before a run."""
+    return {"candidates": discover.candidates(path)}
 
 
 @app.get("/ledgers")

@@ -357,3 +357,6 @@ button.secondary {
 .kind-gtk,
 .kind-qt { background: #ecfdf5; color: #065f46; }
 .kind-java { background: #fff7ed; color: #9a3412; }
+.app-item-selected { background: #eff6ff; }
+.app-item-selected:hover { background: #dbeafe; }
+.app-list > li.muted { padding: 8px 10px; }
