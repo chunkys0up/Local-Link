@@ -48,6 +48,16 @@ transaction included. Each object has exactly these keys:
   position: the same entry must get the same source on every run.
 Do not drop, net, merge or adjust entries.
 
+## What the rows must represent
+Together the rows are a double-entry ledger of the app's books: each transaction's
+debits equal its credits. Apps don't all store data that way, so before writing code,
+work out from the data how this app models money. Where it already keeps balanced
+postings, emit them as they are. Where it doesn't, derive the postings its records
+imply, using only what the data says. Never invent amounts, accounts or categories;
+leave anything the app hasn't assigned visibly unassigned instead of guessing. Make sure
+nothing is counted twice, and that nothing the app treats as deleted or superseded is
+included.
+
 ## Access
 - The data path is READ-ONLY. Never create, modify, move or delete anything there.
   Open databases read-only (SQLite: sqlite3.connect("file:<path>?mode=ro", uri=True)).
@@ -75,7 +85,9 @@ Your extract.py is already in the working folder. The checker rejected its outpu
 {differences}
 
 Work out whether your script misreads the app's data, or whether the books themselves
-have a real problem. Fix your script only if it is wrong. Never hide, drop or alter
+have a real problem. Reason it out from the data: is part of how the app models money
+missing from your script, or does the app itself hold the entries that way? Fix your
+script only if it is wrong. Never hide, drop or alter
 entries to make the checks pass. If your script is right, leave it and explain why in
 your summary.
 """
