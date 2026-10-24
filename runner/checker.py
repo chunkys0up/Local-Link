@@ -7,6 +7,9 @@ from decimal import Decimal
 
 from rows import NormalizedRow, Reference
 
+# Cap per-account lines so a naming mismatch doesn't flood the report.
+MAX_ACCOUNT_DIFFERENCES = 10
+
 # Accounts that should net to zero in healthy books.
 SUSPECT_ACCOUNT = re.compile(
     r"suspense|clearing|uncategori[sz]ed|unknown|imbalance|orphan|ask my accountant",
@@ -56,6 +59,24 @@ def check(rows: list[NormalizedRow], reference: Reference) -> CheckResult:
     balances: dict[str, Decimal] = defaultdict(Decimal)
     for r in rows:
         balances[r.account] += r.amount if r.side == "debit" else -r.amount
+
+    # Per-account comparison catches what totals can't: postings on the wrong
+    # account, or debit and credit swapped within a transaction.
+    account_differences = []
+    for account in sorted(set(balances) | set(reference.accounts)):
+        extracted = balances.get(account, Decimal(0))
+        expected = reference.accounts.get(account, Decimal(0))
+        if extracted != expected:
+            account_differences.append(
+                f"account {account}: extracted {money(extracted)} vs reference "
+                f"{money(expected)} (off by {money(abs(extracted - expected))})"
+            )
+    differences += account_differences[:MAX_ACCOUNT_DIFFERENCES]
+    if len(account_differences) > MAX_ACCOUNT_DIFFERENCES:
+        differences.append(
+            f"...and {len(account_differences) - MAX_ACCOUNT_DIFFERENCES} more account balances differ"
+        )
+
     for account, balance in sorted(balances.items()):
         if balance != 0 and SUSPECT_ACCOUNT.search(account):
             differences.append(

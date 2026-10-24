@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import './App.css'
 
-type Status = 'running' | 'passed' | 'needs_human' | 'error'
+// 'lost' is set by the dashboard, not the runner: the run vanished (runner restarted)
+// or the runner stopped answering.
+type Status = 'running' | 'passed' | 'needs_human' | 'error' | 'lost'
 
 type RunEvent = {
   i: number
@@ -39,14 +41,73 @@ const BADGE: Record<Status | 'idle', string> = {
   passed: 'Pass',
   needs_human: 'Needs human',
   error: 'Error',
+  lost: 'Run lost',
+}
+
+const ALERT: Record<'needs_human' | 'error' | 'lost', { title: string; body: string }> = {
+  needs_human: {
+    title: 'Needs human: books don’t reconcile',
+    body: 'Still failing after one repair attempt. Nothing was loaded into the ledger.',
+  },
+  error: {
+    title: 'Run failed',
+    body: 'The run stopped with an error. Nothing was loaded into the ledger.',
+  },
+  lost: {
+    title: 'Run lost',
+    body: 'The dashboard lost track of this run. Nothing new was loaded. Start the runner if needed, then press Connect again.',
+  },
 }
 
 const POLL_MS = 1000
+const MAX_POLL_FAILURES = 5
+
+class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  if (!res.ok) throw new ApiError(res.status, `${res.status} ${await res.text()}`)
   return res.json() as Promise<T>
+}
+
+type EventItem = { type: 'event'; event: RunEvent } | { type: 'agent'; steps: RunEvent[] }
+
+// Fold consecutive agent tool calls into one expandable row; pipeline steps,
+// agent messages and anything that went wrong stay visible on their own.
+function groupEvents(events: RunEvent[]): EventItem[] {
+  const items: EventItem[] = []
+  for (const event of events) {
+    const isStep = event.kind === 'agent' && !event.label.endsWith(' says')
+    const last = items[items.length - 1]
+    if (!isStep) items.push({ type: 'event', event })
+    else if (last?.type === 'agent') last.steps.push(event)
+    else items.push({ type: 'agent', steps: [event] })
+  }
+  return items
+}
+
+function lastStepText(steps: RunEvent[]): string {
+  const last = steps[steps.length - 1]
+  return `${last.label} · ${last.detail}`
+}
+
+function EventRow({ event }: { event: RunEvent }) {
+  return (
+    <li>
+      <span className={`dot dot-${event.kind}`} aria-hidden="true" />
+      <div>
+        <div className="event-label">{event.label}</div>
+        {event.detail && <div className="mono muted small event-detail">{event.detail}</div>}
+      </div>
+    </li>
+  )
 }
 
 function App() {
@@ -67,18 +128,34 @@ function App() {
     loadLedger().catch((e: Error) => setRequestError(e.message))
   }, [loadLedger])
 
-  // Poll while a run is in progress; refresh the ledger when it ends.
+  // Poll while a run is in progress; refresh the ledger when it ends. Runs live in
+  // the runner's memory, so stop if the run disappears or the runner stays unreachable.
   const runId = run?.run_id
   const running = run?.status === 'running'
   useEffect(() => {
     if (!runId || !running) return
+    let failures = 0
+    const markLost = (reason: string) =>
+      setRun((prev) => (prev && prev.run_id === runId ? { ...prev, status: 'lost', gap: [reason] } : prev))
+
     const timer = setInterval(async () => {
       try {
         const next = await getJson<RunSnapshot>(`/api/events?run_id=${runId}`)
+        failures = 0
+        setRequestError(null)
         setRun(next)
         if (next.status !== 'running') await loadLedger()
       } catch (e) {
-        setRequestError((e as Error).message)
+        if (e instanceof ApiError && e.status === 404) {
+          markLost('The runner no longer knows this run (it was probably restarted).')
+          return
+        }
+        failures += 1
+        if (failures >= MAX_POLL_FAILURES) {
+          markLost(`Couldn't reach the runner ${failures} times in a row. Is it running on port 8000?`)
+        } else {
+          setRequestError(`Can't reach the runner, retrying… (${(e as Error).message})`)
+        }
       }
     }, POLL_MS)
     return () => clearInterval(timer)
@@ -135,14 +212,10 @@ function App() {
         {requestError && <p className="request-error">{requestError}</p>}
       </form>
 
-      {(status === 'needs_human' || status === 'error') && run && (
+      {(status === 'needs_human' || status === 'error' || status === 'lost') && run && (
         <section className="alert" role="alert">
-          <h2>{status === 'needs_human' ? 'Needs human: books don’t reconcile' : 'Run failed'}</h2>
-          <p>
-            {status === 'needs_human'
-              ? 'Still failing after one repair attempt. Nothing was loaded into the ledger.'
-              : 'The run stopped with an error. Nothing was loaded into the ledger.'}
-          </p>
+          <h2>{ALERT[status].title}</h2>
+          <p>{ALERT[status].body}</p>
           <ul className="mono">
             {run.gap.map((g) => (
               <li key={g}>{g}</li>
@@ -157,17 +230,41 @@ function App() {
             <h2>Live events</h2>
             <span className="mono muted small">{run?.run_id}</span>
           </div>
+          <ul className="legend small muted" aria-label="Legend">
+            <li><span className="dot dot-info" aria-hidden="true" />Pipeline step</li>
+            <li><span className="dot dot-agent" aria-hidden="true" />Agent activity</li>
+            <li><span className="dot dot-ok" aria-hidden="true" />Passed</li>
+            <li><span className="dot dot-fail" aria-hidden="true" />Failed or blocked</li>
+          </ul>
           {!run && <p className="muted">No run yet. Press Connect to start the agent.</p>}
           <ol>
-            {run?.events.map((ev) => (
-              <li key={ev.i}>
-                <span className={`dot dot-${ev.kind}`} aria-hidden="true" />
-                <div>
-                  <div className="event-label">{ev.label}</div>
-                  {ev.detail && <div className="mono muted small event-detail">{ev.detail}</div>}
-                </div>
-              </li>
-            ))}
+            {groupEvents(run?.events ?? []).map((item, idx, items) =>
+              item.type === 'event' ? (
+                <EventRow key={item.event.i} event={item.event} />
+              ) : (
+                <li key={item.steps[0].i} className="agent-group">
+                  <span className="dot dot-agent" aria-hidden="true" />
+                  <details>
+                    <summary>
+                      <span className="event-label">
+                        {running && idx === items.length - 1 ? 'Agents working…' : 'Agent steps'}
+                      </span>{' '}
+                      <span className="muted small">
+                        {item.steps.length} {item.steps.length === 1 ? 'step' : 'steps'}
+                      </span>
+                      <span className="mono muted small event-detail">
+                        {lastStepText(item.steps)}
+                      </span>
+                    </summary>
+                    <ol className="agent-steps">
+                      {item.steps.map((ev) => (
+                        <EventRow key={ev.i} event={ev} />
+                      ))}
+                    </ol>
+                  </details>
+                </li>
+              ),
+            )}
           </ol>
         </section>
 

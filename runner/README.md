@@ -18,8 +18,9 @@ curl localhost:8000/ledger                 # loaded rows
 
 - `rows.py`: the normalized row every extractor must output, and the reference-total shape.
 - `checker.py`: debits = credits, row count, totals vs reference, nonzero suspense-like accounts.
-- `agent.py`: Droid session. Writes are allowed only in `scratch/<run_id>/`; commands only if
-  read-only or running a `.py` from scratch. Everything else is refused.
+- `agent.py`: Droid session. Each run works in its own temp folder outside the project
+  (deleted when the run ends); writes are allowed only there, and commands only if
+  read-only or running a `.py` from that folder. Everything else is refused.
 - `pipeline.py`: cached scripts → agent → checker → one repair → `needs_human` or load.
 - `ledger.py`: SQLite ledger; a passing run replaces that app's rows.
 - Working scripts are cached in `cache/<app>/`; delete that folder to force the agent.

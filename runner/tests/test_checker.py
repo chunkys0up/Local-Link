@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 
 from checker import check
@@ -23,14 +24,24 @@ BALANCED = [
 ]
 
 
-def ref(count: int, debits: str, credits: str) -> Reference:
+def balances(rows: list[NormalizedRow]) -> dict[str, Decimal]:
+    out: dict[str, Decimal] = defaultdict(Decimal)
+    for r in rows:
+        out[r.account] += r.amount if r.side == "debit" else -r.amount
+    return dict(out)
+
+
+def ref(count: int, debits: str, credits: str, accounts: dict[str, Decimal]) -> Reference:
     return Reference(
-        row_count=count, total_debits=Decimal(debits), total_credits=Decimal(credits)
+        row_count=count,
+        total_debits=Decimal(debits),
+        total_credits=Decimal(credits),
+        accounts=accounts,
     )
 
 
 def test_passes_clean_books():
-    result = check(BALANCED, ref(4, "4300.00", "4300.00"))
+    result = check(BALANCED, ref(4, "4300.00", "4300.00", balances(BALANCED)))
     assert result.passed
     assert result.differences == []
 
@@ -41,20 +52,20 @@ def test_flags_50_dollars_parked_in_suspense():
         row("Expenses:Supplies", "50.00", "debit"),
         row("Suspense", "50.00", "credit"),
     ]
-    result = check(rows, ref(6, "4350.00", "4350.00"))
+    result = check(rows, ref(6, "4350.00", "4350.00", balances(rows)))
     assert not result.passed
     assert result.differences == ["unexpected nonzero account Suspense: -50.00"]
 
 
 def test_flags_unbalanced_rows():
     rows = BALANCED + [row("Expenses:Supplies", "50.00", "debit")]
-    result = check(rows, ref(5, "4350.00", "4300.00"))
+    result = check(rows, ref(5, "4350.00", "4300.00", balances(rows)))
     assert not result.passed
     assert "debits 4,350.00 != credits 4,300.00 (off by 50.00)" in result.differences
 
 
 def test_flags_row_count_and_total_mismatch():
-    result = check(BALANCED, ref(5, "4350.00", "4350.00"))
+    result = check(BALANCED, ref(5, "4350.00", "4350.00", balances(BALANCED)))
     assert result.differences == [
         "row count 4 != reference 5",
         "total debits 4,300.00 != reference 4,350.00 (off by 50.00)",
@@ -63,5 +74,33 @@ def test_flags_row_count_and_total_mismatch():
 
 
 def test_fails_on_no_rows():
-    result = check([], ref(0, "0", "0"))
+    result = check([], ref(0, "0", "0", {}))
     assert result.differences == ["no rows were extracted"]
+
+
+def test_flags_posting_on_the_wrong_account():
+    # Same totals and row count, but rent landed on Utilities: totals alone miss this.
+    wrong = [r if r.account != "Expenses:Rent" else row("Expenses:Utilities", "1800.00", "debit") for r in BALANCED]
+    result = check(wrong, ref(4, "4300.00", "4300.00", balances(BALANCED)))
+    assert result.differences == [
+        "account Expenses:Rent: extracted 0.00 vs reference 1,800.00 (off by 1,800.00)",
+        "account Expenses:Utilities: extracted 1,800.00 vs reference 0.00 (off by 1,800.00)",
+    ]
+
+
+def test_flags_debit_and_credit_swapped_within_a_transaction():
+    swapped = [
+        row("Assets:Checking", "2500.00", "credit"),
+        row("Income:Sales", "2500.00", "debit"),
+    ] + BALANCED[2:]
+    result = check(swapped, ref(4, "4300.00", "4300.00", balances(BALANCED)))
+    assert not result.passed
+    assert any(d.startswith("account Income:Sales:") for d in result.differences)
+
+
+def test_caps_account_differences_on_naming_mismatch():
+    renamed = {f"Other:{name}": value for name, value in balances(BALANCED).items()}
+    many = {**renamed, **{f"Extra:{i}": Decimal("0.01") for i in range(12)}}
+    result = check(BALANCED, ref(4, "4300.00", "4300.00", many))
+    assert len(result.differences) == 11
+    assert result.differences[-1].endswith("more account balances differ")

@@ -27,3 +27,4 @@ class Reference(BaseModel):
     row_count: int = Field(ge=0)
     total_debits: Decimal
     total_credits: Decimal
+    accounts: dict[str, Decimal]  # account -> debits minus credits

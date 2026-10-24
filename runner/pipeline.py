@@ -1,4 +1,4 @@
-"""One connect run: cached scripts or agent, then checker, one repair, then ledger."""
+"""One connect run: cached scripts or agents, then checker, one repair, then ledger."""
 
 import asyncio
 import json
@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -14,14 +15,12 @@ from pathlib import Path
 from pydantic import ValidationError
 
 import ledger
-from agent import run_agent
+from agent import ROLES, run_agent
 from checker import CheckResult, check, money
 from rows import NormalizedRow, Reference
 
 ROOT = Path(__file__).parent
-SCRATCH_DIR = ROOT / "scratch"
 CACHE_DIR = ROOT / "cache"
-SCRIPTS = ("extract.py", "reference.py")
 SCRIPT_TIMEOUT_SECONDS = 120
 
 
@@ -88,25 +87,28 @@ def _run_script(script: Path, data_path: Path) -> object:
         raise RuntimeError(f"{script.name} did not print valid JSON: {e}") from e
 
 
-def evaluate(run: Run, scratch: Path, data_path: Path) -> tuple[CheckResult, list[NormalizedRow]]:
-    """Run the scratch scripts and check their output."""
-    missing = [s for s in SCRIPTS if not (scratch / s).exists()]
+def evaluate(
+    run: Run, workspaces: dict[str, Path], data_path: Path
+) -> tuple[CheckResult, list[NormalizedRow]]:
+    """Run each role's script from its own workspace and check their output."""
+    scripts = {key: workspaces[key] / ROLES[key].script for key in ROLES}
+    missing = [p.name for p in scripts.values() if not p.exists()]
     if missing:
         return CheckResult(False, [f"missing script: {s}" for s in missing]), []
 
     try:
-        raw_rows = _run_script(scratch / "extract.py", data_path)
+        raw_rows = _run_script(scripts["extract"], data_path)
         if not isinstance(raw_rows, list):
             raise RuntimeError("extract.py must print a JSON array")
         rows = [NormalizedRow.model_validate({**r, "run_id": run.id}) for r in raw_rows]
         run.emit("info", "Extractor produced rows", f"{len(rows)} rows")
 
-        reference = Reference.model_validate(_run_script(scratch / "reference.py", data_path))
+        reference = Reference.model_validate(_run_script(scripts["reference"], data_path))
         run.emit(
             "info",
             "Reference total from the app",
             f"{reference.row_count} rows · debits {money(reference.total_debits)}"
-            f" · credits {money(reference.total_credits)}",
+            f" · credits {money(reference.total_credits)} · {len(reference.accounts)} accounts",
         )
     except (RuntimeError, subprocess.TimeoutExpired, ValidationError, TypeError) as e:
         message = " ".join(str(e).split())[:500]
@@ -115,55 +117,78 @@ def evaluate(run: Run, scratch: Path, data_path: Path) -> tuple[CheckResult, lis
 
     result = check(rows, reference)
     if result.passed:
-        run.emit("ok", "Checker passed", f"debits = credits · {len(rows)} rows · totals match")
+        run.emit(
+            "ok",
+            "Checker passed",
+            f"debits = credits · {len(rows)} rows · totals and {len(reference.accounts)} account balances match",
+        )
     else:
         run.emit("fail", "Checker failed", "; ".join(result.differences))
     return result, rows
 
 
-def _finish_pass(run: Run, scratch: Path, rows: list[NormalizedRow]) -> None:
+def _finish_pass(run: Run, workspaces: dict[str, Path], rows: list[NormalizedRow]) -> None:
     cache = CACHE_DIR / slug(run.app)
     cache.mkdir(parents=True, exist_ok=True)
-    for name in SCRIPTS:
-        shutil.copy2(scratch / name, cache / name)
+    for key, role in ROLES.items():
+        shutil.copy2(workspaces[key] / role.script, cache / role.script)
     run.rows_loaded = ledger.load(run.app, rows)
     run.status = "passed"
     run.emit("ok", "Loaded into ledger", f"{run.rows_loaded} rows → ledger.db")
 
 
+async def _run_agents(
+    run: Run, data_path: Path, workspaces: dict[str, Path], error: list[str] | None
+) -> None:
+    """Both roles at once, each in its own folder, never seeing the other's work."""
+
+    async def one(key: str) -> None:
+        try:
+            await run_agent(key, run.app, data_path, workspaces[key], run.emit, error)
+        except Exception as e:  # still check whatever script it left behind
+            run.emit("error", f"{ROLES[key].name} session crashed", f"{type(e).__name__}: {e}")
+
+    await asyncio.gather(*(one(key) for key in ROLES))
+
+
 async def execute(run: Run) -> None:
+    workspaces: dict[str, Path] = {}
     try:
         data_path = Path(run.data_path).expanduser().resolve()
         if not data_path.exists():
             raise FileNotFoundError(f"data path does not exist: {data_path}")
-        scratch = SCRATCH_DIR / run.id
-        scratch.mkdir(parents=True)
+        # Each role gets a fresh temp folder outside the project, deleted when the run
+        # ends, so agents never see the repo, each other, or earlier runs' work.
+        # Resolve because macOS temp paths sit behind the /var -> /private/var symlink.
+        for key in ROLES:
+            workspaces[key] = Path(tempfile.mkdtemp(prefix=f"local-link-{run.id}-{key}-")).resolve()
         run.emit("info", "Connect requested", f"app={run.app} · data={data_path} · run={run.id}")
 
         error: list[str] | None = None
         cache = CACHE_DIR / slug(run.app)
-        if all((cache / s).exists() for s in SCRIPTS):
-            for name in SCRIPTS:
-                shutil.copy2(cache / name, scratch / name)
-            run.emit("info", "Using cached scripts", f"from cache/{slug(run.app)}, skipping the agent")
-            result, rows = await asyncio.to_thread(evaluate, run, scratch, data_path)
+        if all((cache / role.script).exists() for role in ROLES.values()):
+            for key, role in ROLES.items():
+                shutil.copy2(cache / role.script, workspaces[key] / role.script)
+            run.emit("info", "Using cached scripts", f"from cache/{slug(run.app)}, skipping the agents")
+            result, rows = await asyncio.to_thread(evaluate, run, workspaces, data_path)
             if result.passed:
                 run.used_cache = True
-                _finish_pass(run, scratch, rows)
+                _finish_pass(run, workspaces, rows)
                 return
-            run.emit("info", "Cached scripts broke", "falling back to the agent")
+            run.emit("info", "Cached scripts broke", "falling back to the agents")
             error = result.differences
 
         for attempt in (1, 2):
-            label = "Agent session started" if attempt == 1 else "Repair: rerunning agent with the error"
-            run.emit("info", label, f"read-only: {data_path} · write: {scratch}")
-            try:
-                await run_agent(run.app, data_path, scratch, run.emit, error)
-            except Exception as e:  # still check whatever scripts it left behind
-                run.emit("error", "Agent session crashed", f"{type(e).__name__}: {e}")
-            result, rows = await asyncio.to_thread(evaluate, run, scratch, data_path)
+            label = "Agents started" if attempt == 1 else "Repair: rerunning both agents with the error"
+            run.emit(
+                "info",
+                label,
+                f"extractor and reference agents work separately · read-only: {data_path}",
+            )
+            await _run_agents(run, data_path, workspaces, error)
+            result, rows = await asyncio.to_thread(evaluate, run, workspaces, data_path)
             if result.passed:
-                _finish_pass(run, scratch, rows)
+                _finish_pass(run, workspaces, rows)
                 return
             error = result.differences
 
@@ -174,3 +199,6 @@ async def execute(run: Run) -> None:
         run.status = "error"
         run.gap = [f"{type(e).__name__}: {e}"]
         run.emit("error", "Run crashed", run.gap[0])
+    finally:
+        for workspace in workspaces.values():
+            shutil.rmtree(workspace, ignore_errors=True)

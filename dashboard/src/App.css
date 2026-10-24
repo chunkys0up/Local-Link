@@ -46,6 +46,7 @@
 .badge-running { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 .badge-passed { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
 .badge-needs_human,
+.badge-lost,
 .badge-error { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
 
 .card {
@@ -203,3 +204,44 @@ th {
 td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
 td.mono { font-size: 12px; }
 .num { text-align: right; }
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.legend li { display: flex; align-items: center; gap: 6px; }
+.legend .dot { margin-top: 0; }
+
+.agent-group details { min-width: 0; flex: 1; }
+.agent-group summary {
+  cursor: pointer;
+  list-style: none;
+}
+.agent-group summary::-webkit-details-marker { display: none; }
+.agent-group summary .event-label::before {
+  content: '▸ ';
+  color: var(--muted);
+}
+.agent-group details[open] summary .event-label::before { content: '▾ '; }
+.agent-group summary .event-detail {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-group summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.events ol.agent-steps {
+  margin-top: 10px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+  max-height: none;
+  overflow: visible;
+}
+.agent-steps li { padding-left: 10px; }
