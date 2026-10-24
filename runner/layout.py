@@ -34,7 +34,10 @@ def _describe_file(path: Path) -> list[str]:
     with path.open("rb") as f:
         head = f.read(16)
     if head.startswith(b"SQLite format 3\x00"):
-        return _sqlite(path)
+        try:
+            return _sqlite(path)
+        except sqlite3.DatabaseError:  # corrupt or locked; the agent will see it too
+            return ["unreadable sqlite database"]
     opener = gzip.open if head[:2] == b"\x1f\x8b" else open
     try:
         with opener(path, "rb") as f:
@@ -49,7 +52,7 @@ def _describe_file(path: Path) -> list[str]:
             with open(path, newline="", encoding="utf-8-sig") as f:
                 header = next(csv.reader(f, delimiter="\t" if path.suffix.lower() == ".tsv" else ","), [])
             return [f"csv columns({', '.join(header)})"]
-    except (OSError, ET.ParseError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, ET.ParseError, json.JSONDecodeError, UnicodeDecodeError, RecursionError):
         pass
     return [f"unrecognized file {path.suffix or '(no extension)'}"]
 

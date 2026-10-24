@@ -37,3 +37,9 @@ def test_csv_header(tmp_path):
     f = tmp_path / "export.csv"
     f.write_text("date,account,amount\n2026-01-01,Rent,10\n")
     assert layout.describe(f) == ["csv columns(date, account, amount)"]
+
+
+def test_corrupt_sqlite_does_not_crash(tmp_path):
+    db = tmp_path / "broken.db"
+    db.write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+    assert layout.describe(db) == ["unreadable sqlite database"]
