@@ -104,7 +104,7 @@ export function BuildCard({ job, onStop }: { job: JobSnapshot; onStop?: () => vo
   return (
     <section className={`card build ${running ? 'build-live' : `build-${job.status}`}`} aria-live="polite">
       <div className="build-top">
-        <div className={`orb${running && !pending.length ? ' orb-live' : ''}`} aria-hidden="true">
+        <div className={`blocks${running && !pending.length ? ' blocks-live' : ''}`} aria-hidden="true">
           <span />
           <span />
           <span />
