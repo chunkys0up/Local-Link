@@ -287,7 +287,11 @@ route('GET', '/workflows/:id/runs/:job', (req) => {
 // The newest build or run still going, with its workflow's title: the picture-in-picture.
 route('GET', '/live', () => {
   const j = jobs.liveJob()
-  return j ? { ...j.snapshot(), title: workflows.get(j.workflowId)?.title ?? '' } : null
+  if (!j) return null
+  const wf = workflows.get(j.workflowId)
+  // A run's step count isn't known up front; the last good run's is the best guess.
+  const lastGood = wf?.runs.find((r) => r.kind === 'run' && r.status === 'passed' && r.steps)
+  return { ...j.snapshot(), title: wf?.title ?? '', expected_steps: lastGood?.steps ?? null }
 })
 
 route('GET', '/jobs/:id', (req) => job(req.params.id).snapshot(int(req.query, 'after', 0, 0)))

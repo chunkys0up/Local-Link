@@ -29,6 +29,7 @@ export interface RunSummary {
   summary: unknown
   error: string | null
   healed: boolean
+  steps?: number // how many script steps it got through
 }
 
 export interface Workflow {
@@ -154,7 +155,8 @@ export function runDir(id: string, jobId: string): string {
 
 /** Keep a finished job's log next to the workflow, and its outcome in the run list. */
 export function recordRun(job: Job, extra: { summary?: unknown; error?: string | null; healed?: boolean } = {}): void {
-  writeFileSync(join(runDir(job.workflowId, job.id), 'run.json'), JSON.stringify(job.snapshot(), null, 2))
+  const snapshot = job.snapshot()
+  writeFileSync(join(runDir(job.workflowId, job.id), 'run.json'), JSON.stringify(snapshot, null, 2))
   update(job.workflowId, (wf) => {
     const run: RunSummary = {
       job_id: job.id,
@@ -165,9 +167,15 @@ export function recordRun(job: Job, extra: { summary?: unknown; error?: string |
       summary: extra.summary ?? null,
       error: extra.error ?? null,
       healed: extra.healed ?? false,
+      steps: stepsTaken(snapshot.events),
     }
     wf.runs = [run, ...wf.runs.filter((r) => r.job_id !== job.id)].slice(0, 50)
   })
+}
+
+/** The highest script step a run's events reached ("Step 3: …"). */
+export function stepsTaken(events: { label: string }[]): number {
+  return events.reduce((most, e) => Math.max(most, Number(/^Step (\d+):/.exec(e.label)?.[1] ?? 0)), 0)
 }
 
 /** A finished run's saved log, for runs from before this engine started. */

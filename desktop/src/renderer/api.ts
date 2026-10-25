@@ -30,6 +30,7 @@ type Bridge = {
   openExternal: (url: string) => Promise<void>
   openPrivacy: (pane: 'accessibility' | 'screen') => Promise<void>
   onAttention: (listener: (workflowId: string) => void) => () => void
+  pipHover: (over: boolean) => void
 }
 const bridge = (window as unknown as { retronaut?: Bridge }).retronaut
 
@@ -43,6 +44,11 @@ export function openPrivacy(pane: 'accessibility' | 'screen'): void {
 }
 
 export const inElectron = Boolean(bridge)
+
+/** Tell the picture-in-picture's window the pointer is over it, or has left. */
+export function pipHover(over: boolean): void {
+  bridge?.pipHover(over)
+}
 
 /** When the engine needs the person on a workflow's page (Electron only). */
 export function onAttention(listener: (workflowId: string) => void): () => void {
