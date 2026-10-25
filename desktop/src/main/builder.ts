@@ -180,7 +180,7 @@ class Questions {
     } else if (q.kind === 'connector') {
       const title = `Connect ${q.name[0].toUpperCase()}${q.name.slice(1)}`
       this.waiting.push(
-        this.job.ask('connector', title, q.reason, { connector: q.name, url: FACTORY_CONNECTORS_URL, imap: /gmail|google/i.test(q.name) }).then((r) => {
+        this.job.ask('connector', title, q.reason, { connector: q.name, url: FACTORY_CONNECTORS_URL }).then((r) => {
           if (r.status !== 'approved') return `The user did not connect ${q.name}.`
           workflows.update(this.wfId, (wf) => void (wf.connectors = [...new Set([...wf.connectors, q.name])]))
           if (/gmail|google/i.test(q.name) && gmail.connectedAccount()) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 
 import { api, inElectron, openPrivacy, type Health } from './api'
 import arrow from './assets/arrow-up-right.svg'
+import type { Box } from './Flight'
 
 // Short teasers on the stage; picking one puts the whole prompt in the composer.
 const SUGGESTIONS = [
@@ -58,7 +59,7 @@ function Check({ ok, label, detail, fix }: { ok: boolean | null; label: string; 
   )
 }
 
-export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }) {
+export function Home({ onStart, leaving = false }: { onStart: (prompt: string, from?: Box) => Promise<void>; leaving?: boolean }) {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -109,7 +110,8 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
     setBusy(true)
     setError(null)
     try {
-      await onStart(prompt.trim())
+      const r = form.current?.getBoundingClientRect()
+      await onStart(prompt.trim(), r && { left: r.left, top: r.top, width: r.width, height: r.height })
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
@@ -131,7 +133,7 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
   const ready = health && health.droid && health.api_key && health.accessibility !== false && health.screen_recording !== 'denied'
 
   return (
-    <div className="home">
+    <div className={`home${leaving ? ' leaving' : ''}`}>
       {health && !ready && (
         <section className="notice home-notice" aria-label="Before you start">
           <h2>Before you start</h2>
@@ -165,7 +167,12 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
 
       <div className="home-stage">
         {TILES.map(([c, r], i) => (
-          <span key={`${c}-${r}`} className="tile" style={{ ...at(c, r), ...blinks[i] }} aria-hidden="true" />
+          <span
+            key={`${c}-${r}`}
+            className="tile"
+            style={{ ...at(c, r), ...blinks[i], '--out-delay': `${(r - 3) * 45 + Math.abs(c - 6.5) * 12}ms` } as CSSProperties}
+            aria-hidden="true"
+          />
         ))}
 
         <div className="composer-slot" ref={slot}>

@@ -39,14 +39,24 @@ Runs: `POST /workflows/:id/run`. A failed step starts a healing agent on a copy 
 with the failure, its screenshot, the plan and `state.json`; its fix is installed (the old one
 kept in `history/`) and the run picks up again.
 
-Gmail is Retronaut's own connection (`gmail.ts`): IMAP with a Google app password, checked
-against Gmail when connected and kept in the macOS keychain (connect it on the home screen,
-or when the builder asks). Searches use Gmail's query syntax and return exact message bodies,
-with no agent involved. The builder explores with the `gmail_search` tool; scripts call
-`ll.gmail.search`, which goes through the engine (`POST /connectors/gmail/search`).
-Without that connection the engine falls back to Factory's managed connector (one read-only
-droid turn with structured output), which only works if the connector is connected for the
-user and organization behind `FACTORY_API_KEY`.
+Gmail goes through Factory's managed connector: connect it in the Factory app (Settings ›
+Connectors) with the account behind `FACTORY_API_KEY`. The engine reaches it with one
+read-only droid turn per search (structured output).
+
+Optionally, Retronaut can also read Gmail directly (`gmail.ts`): IMAP with a Google app
+password, checked against Gmail and kept in the macOS keychain. There is no UI for it; while
+the app is running:
+
+```bash
+curl -X POST localhost:8000/connectors/gmail -H 'Content-Type: application/json' \
+  -d '{"email": "you@gmail.com", "app_password": "abcd efgh ijkl mnop"}'
+curl localhost:8000/connectors                       # which address is connected
+curl -X DELETE localhost:8000/connectors/gmail       # forget it
+```
+
+With it, searches return exact message bodies in a second or two, with no agent involved,
+and the builder explores with the `gmail_search` tool. Scripts call `ll.gmail.search` either
+way; the engine (`POST /connectors/gmail/search`) uses the direct connection when there is one.
 
 When the builder hits something ambiguous it asks with droid's AskUser; the questions show
 up as a card. Healing sessions have no one to ask, so AskUser is refused there.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { BuildCard, formatDuration } from './BuildCard'
-import { GmailConnect } from './GmailConnect'
+import type { Intro } from './Flight'
 import { api, live, openExternal, type JobEvent, type JobSnapshot, type Plan, type RunSummary, type UserRequest, type Workflow } from './api'
 
 const POLL_MS = 900
@@ -100,31 +100,6 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
 
   if (request.kind === 'question') {
     return <QuestionCard request={request} onAnswer={answer} busy={busy} />
-  }
-
-  if (request.kind === 'connector' && request.data.imap) {
-    return (
-      <section className="card request" aria-label={request.title}>
-        <div className="request-head">
-          <span className="request-icon connector" aria-hidden="true">@</span>
-          <div>
-            <h2>Connect Gmail</h2>
-            <p className="muted">{request.reason}</p>
-          </div>
-        </div>
-        <p className="small muted">Already connected Gmail in Factory (Settings → Connectors) with this API key's account? Use that instead.</p>
-        <div className="request-actions">
-          <button type="button" className="secondary" disabled={busy} onClick={() => answer(false)}>
-            Not now
-          </button>
-          <button type="button" className="secondary" disabled={busy} onClick={() => answer(true, 'factory')}>
-            Use my Factory connection
-          </button>
-        </div>
-        <div className="or-divider small muted">or connect it directly</div>
-        <GmailConnect onConnected={() => void answer(true)} />
-      </section>
-    )
   }
 
   if (request.kind === 'connector') {
@@ -261,17 +236,20 @@ function JobPanel({
   job,
   onAnswer,
   onStop,
+  spring = false,
 }: {
   job: JobSnapshot
   onAnswer: (r: UserRequest, approved: boolean, feedback?: string) => Promise<void>
   onStop: () => Promise<void>
+  /** Arriving from the send animation: the cards spring in, one after another. */
+  spring?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const running = live(job.status)
   const pending = job.requests.filter((r) => r.status === 'pending')
 
   return (
-    <div className="job">
+    <div className={`job${spring ? ' springing' : ''}`}>
       <BuildCard job={job} onStop={onStop} />
 
       {pending.map((r) => (
@@ -325,7 +303,21 @@ function RunRow({ wfId, run }: { wfId: string; run: RunSummary }) {
   )
 }
 
-export function WorkflowView({ id, onChanged, onDeleted }: { id: string; onChanged: () => void; onDeleted: () => void }) {
+export function WorkflowView({
+  id,
+  intro = null,
+  introAnchor,
+  onChanged,
+  onDeleted,
+}: {
+  id: string
+  /** Set when this page is the end of the send animation. */
+  intro?: Intro | null
+  /** The caption the flying prompt lands on. */
+  introAnchor?: (el: HTMLElement | null) => void
+  onChanged: () => void
+  onDeleted: () => void
+}) {
   const [wf, setWf] = useState<Workflow | null>(null)
   const [job, setJob] = useState<JobSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -418,11 +410,32 @@ export function WorkflowView({ id, onChanged, onDeleted }: { id: string; onChang
 
   const lastRun = useMemo(() => wf?.runs.find((r) => r.kind === 'run'), [wf])
 
-  if (!wf) return <div className="page">{error ? <p className="request-error">{error}</p> : <p className="muted">Loading…</p>}</div>
+  // While it builds, the prompt sits at the top as a dim caption, the title comes after.
+  const building = wf ? wf.status === 'building' : intro !== null
+  const caption = building && (
+    <p
+      className="build-caption"
+      ref={introAnchor}
+      style={{ ...(intro ? { width: intro.width } : {}), visibility: intro && !intro.landed ? 'hidden' : undefined }}
+    >
+      {wf?.goal ?? intro?.prompt}
+    </p>
+  )
+
+  if (!wf) {
+    return (
+      <div className="page workflow">
+        {caption}
+        {error ? <p className="request-error">{error}</p> : !intro && <p className="muted">Loading…</p>}
+      </div>
+    )
+  }
 
   const busy = live(job?.status)
   return (
-    <div className="page workflow">
+    <div className={`page workflow${building ? ' is-building' : ''}`}>
+      {caption}
+      {!building && (
       <header className="view-head">
         <div className="view-title">
           <h1>{wf.title}</h1>
@@ -441,10 +454,11 @@ export function WorkflowView({ id, onChanged, onDeleted }: { id: string; onChang
           )}
         </div>
       </header>
+      )}
 
       {error && <p className="request-error">{error}</p>}
 
-      {job && <JobPanel job={job} onAnswer={answer} onStop={stop} />}
+      {job && (!intro || intro.landed) && <JobPanel job={job} onAnswer={answer} onStop={stop} spring={intro !== null} />}
 
       {wf.status !== 'building' && (
         <div className="wf-grid">

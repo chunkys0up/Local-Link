@@ -5,6 +5,7 @@
 .shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  transition: grid-template-columns 0.32s cubic-bezier(0.22, 1, 0.36, 1);
   height: 100vh;
   height: 100dvh;
   background: var(--bg);
@@ -154,20 +155,226 @@ button.side-item.active:hover:not(:disabled) {
   color: var(--bad-text);
 }
 
+/* The brand row's toggle: collapse when expanded. */
+button.side-toggle {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--subtle);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s, color 0.15s;
+}
+.sidebar:hover button.side-toggle,
+button.side-toggle:focus-visible {
+  opacity: 1;
+}
+button.side-toggle:hover:not(:disabled) {
+  background: var(--neutral-soft);
+  color: var(--text);
+}
+
+/* ---------- collapsed: a strip of the logo and status dots ----------
+   Nothing moves while it closes: the logo and the dots keep their left edge (the dots
+   are indented to sit under the logo), everything else fades in place, and the
+   narrow width centres that column. */
+
+.shell.collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+.sidebar {
+  overflow: hidden;
+}
+.side-name,
+button.side-new,
+.side-label,
+.side-empty,
+.side-bottom,
+.side-item-name {
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.collapsed .side-name,
+.collapsed button.side-toggle,
+.collapsed button.side-new,
+.collapsed .side-label,
+.collapsed .side-empty,
+.collapsed .side-bottom,
+.collapsed .side-item-name {
+  opacity: 0;
+  visibility: hidden;
+}
+/* The dot sits under the logo: 12px sidebar padding + 18px = the logo's centre. */
+.side-section button.side-item {
+  padding-left: 18px;
+}
+.collapsed button.side-item {
+  width: 44px;
+}
+
+/* The logo; collapsed, it turns into the expand button on hover. */
+button.brand-button {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+button.brand-button:hover:not(:disabled) {
+  background: transparent;
+}
+.collapsed button.brand-button {
+  cursor: pointer;
+}
+.collapsed button.brand-button::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--radius-md);
+  background: var(--neutral-soft);
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.collapsed button.brand-button:hover::before {
+  opacity: 1;
+}
+.brand-button .brand-mark,
+.brand-expand {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.brand-expand {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  opacity: 0;
+  transform: scale(0.85);
+}
+.collapsed button.brand-button:hover .brand-mark,
+.collapsed button.brand-button:focus-visible .brand-mark {
+  opacity: 0;
+  transform: scale(0.85);
+}
+.collapsed button.brand-button:hover .brand-expand,
+.collapsed button.brand-button:focus-visible .brand-expand {
+  opacity: 1;
+  transform: none;
+}
+
 /* ---------- main area ---------- */
 
 .main {
   position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  background: var(--glow-soft), var(--bg);
+  background: var(--glow-soft);
   background-attachment: fixed;
 }
-.main.main-home {
+/* The home screen's full glow sits behind the main area and crossfades, so leaving
+   home never cuts from one background to another. */
+.glow-layer {
+  grid-column: 2;
+  grid-row: 1;
   background: var(--glow);
+  opacity: 0;
+  transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.glow-layer.on {
+  opacity: 1;
+}
+
+/* ---------- the send animation ---------- */
+
+/* The prompt in flight (Flight.tsx animates it), and the caption it lands on. Both
+   lay out text exactly like the composer, scaled to 13px, so it wraps the same. */
+.flight {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  padding: 15.6px 13.87px;
+  border-radius: 10.4px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  pointer-events: none;
+  will-change: transform, height;
+}
+.flight-text,
+.build-caption {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.build-caption {
+  align-self: center;
+  width: min(600px, 100%);
+  max-width: 100%;
+  margin: 10px auto 6px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Home dissolving around the prompt: the headline lifts away, the tiles sink in a ripple. */
+.home.leaving {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.home.leaving .composer {
+  visibility: hidden;
+}
+.home.leaving .home-hero,
+.home.leaving .home-notice {
+  animation: lift-out 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.home.leaving .tile,
+.home.leaving .chip {
+  animation: sink-out 0.52s cubic-bezier(0.4, 0, 0.2, 1) var(--out-delay, 40ms) forwards;
+}
+@keyframes lift-out {
+  to { opacity: 0; transform: translateY(-16px); filter: blur(6px); }
+}
+@keyframes sink-out {
+  to { opacity: 0; transform: translateY(18px) scale(0.96); }
+}
+
+/* The cards arriving under the landed prompt: a heavy, bubbly spring, one after another. */
+.job.springing > * {
+  transform-origin: 50% 0;
+  animation: spring-in 0.9s linear(0, 0.0469, 0.1651, 0.3235, 0.4966, 0.6648, 0.8145, 0.9378, 1.0312, 1.0951, 1.1322, 1.1469, 1.1443, 1.1297, 1.1077, 1.0825, 1.0572, 1.034, 1.0145, 0.9993, 0.9885, 0.9818, 0.9787, 0.9783, 0.98, 0.983, 0.9866, 0.9904, 0.9939, 0.997, 0.9995, 1.0013, 1.0024, 1.0031, 1.0032, 1.0031, 1.0027) both;
+}
+.job.springing > :nth-child(2) { animation-delay: 0.11s; }
+.job.springing > :nth-child(3) { animation-delay: 0.22s; }
+.job.springing > :nth-child(n + 4) { animation-delay: 0.33s; }
+@keyframes spring-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.86); }
+  to { opacity: 1; transform: none; }
 }
 .main > .drag {
   position: sticky;
@@ -477,84 +684,6 @@ button.small-button {
   font-size: 12px;
 }
 
-dialog.accounts {
-  width: min(520px, calc(100vw - 48px));
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-solid);
-  color: var(--text);
-  box-shadow: var(--shadow-float);
-}
-dialog.accounts::backdrop {
-  background: rgba(0, 0, 0, 0.5);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-}
-.accounts-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 24px;
-}
-.accounts-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-.accounts-head h2 {
-  font-size: 16px;
-  font-weight: 700;
-}
-.accounts-head p {
-  margin-top: 6px;
-}
-
-.gmail-connect {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.gmail-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.gmail-fields input {
-  flex: 1 1 200px;
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: 13px;
-  background: var(--field);
-  color: var(--text);
-}
-.gmail-fields input:focus {
-  outline: 0;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--ring);
-}
-button.link.inline {
-  display: inline;
-  font-size: inherit;
-}
-.text-ok { color: var(--ok-text); font-weight: 500; }
-.or-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.or-divider::before,
-.or-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
 /* ---------- a live job: build card, requests ---------- */
 
 .job {
@@ -567,7 +696,6 @@ button.link.inline {
 }
 .build-live {
   border-color: rgba(255, 70, 8, 0.35);
-  box-shadow: 0 0 0 1px rgba(255, 70, 8, 0.08), 0 20px 60px -30px rgba(255, 70, 8, 0.45);
 }
 .build-passed { border-color: rgba(52, 211, 153, 0.3); }
 .build-failed,
@@ -1070,16 +1198,8 @@ body.pip-body {
   font-size: 12px;
 }
 
+/* Narrow windows keep the sidebar beside the page; App collapses it to the strip. */
 @media (max-width: 760px) {
-  .shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .sidebar {
-    max-height: 40vh;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
   .hints {
     grid-template-columns: 1fr;
   }
