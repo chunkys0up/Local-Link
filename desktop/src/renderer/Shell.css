@@ -1118,29 +1118,33 @@ body.pip-body {
   min-height: 0;
   overflow: hidden;
 }
+/* Just the words: what it's doing and its last three steps. Translucent, and gone while
+   the pointer is over it, so it never hides what's underneath for long. */
 .pip {
   margin: 6px;
-  max-width: 368px; /* the window is 380px wide */
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 13px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  overflow: hidden;
   background: rgba(28, 28, 27, 0.94);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  box-shadow: var(--shadow-float);
+  opacity: 0.9;
+  transition: opacity 0.25s;
+}
+.pip.away {
+  opacity: 0;
 }
 .pip-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  font-size: 11.5px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  font-size: 12.5px;
 }
 .brand-dot {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1155,47 +1159,36 @@ body.pip-body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pip-kind {
+.pip-status {
+  flex: none;
   color: var(--muted);
 }
-.build.compact {
-  border: 0;
-  border-radius: 0;
-  padding: 14px 16px 16px;
-  gap: 14px;
-  background: none;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+.pip-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.build.compact .orb {
-  width: 30px;
-  height: 30px;
-}
-.build.compact .orb span:nth-child(2) { inset: 5px; }
-.build.compact .orb span:nth-child(3) { inset: 10px; }
-.build.compact .build-text h2 {
-  font-size: 14px;
-}
-/* Too narrow for six labels; the title already names the phase. */
-.build.compact .phases li {
-  font-size: 0;
-  gap: 0;
-}
-.build.compact .hints {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-.build.compact .hint-shot img {
-  max-height: 120px;
-  object-fit: cover;
-  object-position: center top;
-}
-.build.compact .hint-shot figcaption {
-  display: none;
-}
-.build.compact .hint-list li {
+.pip-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
+  color: var(--muted);
+}
+.pip-steps li:last-child {
+  color: var(--text);
+}
+.pip-steps .dot {
+  margin-top: 0;
+}
+.pip-steps .hint-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Narrow windows keep the sidebar beside the page; App collapses it to the strip. */

@@ -4,8 +4,9 @@
  * - The frame: a border around the display. Dull while a build or run is going (so you
  *   know automation is about), bright with a pill naming the action while Retronaut is
  *   actually driving an app. Only the pill's Stop button catches clicks.
- * - The picture-in-picture: the live build card (phase, latest screenshot, recent steps)
- *   in the top-right corner, for the whole build or run. Clicks pass through it.
+ * - The picture-in-picture: what the build or run is doing and its last three steps, in
+ *   the top-right corner, for the whole build or run. Clicks pass through it, and it
+ *   fades away while the pointer is over it.
  *
  * Neither window ever takes focus, so neither can steal input meant for the app being
  * driven, and the agent's screenshots capture only that app's window. Electron only.
@@ -18,7 +19,10 @@ import * as mac from '../shared/macos'
 import { JOBS, liveJob } from './jobs'
 import * as ui from './uiActivity'
 
-const PIP = { width: 380, height: 330, margin: 14 }
+const PIP = { width: 320, height: 170, margin: 14 }
+// A MacBook's built-in display (notched models) rounds its top corners and keeps the
+// bottom ones square; the frame follows that edge. External displays are square.
+const BUILT_IN_TOP_RADIUS = 10
 const POLL_MS = 1000
 
 const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -26,7 +30,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body.paused { --accent: #fbbf24; --glow: rgba(251, 191, 36, 0.4); }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     font: 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-user-select: none; cursor: default; }
-  .frame { position: fixed; inset: 0; border-radius: 12px; opacity: 0;
+  .frame { position: fixed; inset: 0; border-radius: var(--radius, 0) var(--radius, 0) 0 0; opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
   /* A build or run is going: a quiet reminder. */
   body.session .frame { opacity: 1; border: 3px solid rgba(255, 125, 54, 0.4); box-shadow: none; }
@@ -59,6 +63,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     document.body.classList.toggle('on', s.active)
     document.body.classList.toggle('paused', s.paused)
     document.documentElement.style.setProperty('--top', s.top + 'px')
+    document.documentElement.style.setProperty('--radius', s.radius + 'px')
     text.innerHTML = s.paused
       ? 'Paused <span class="muted">· waiting for you to let go of the mouse and keyboard</span>'
       : '<b></b> <span class="action"></span> <span class="muted">· hands off</span>'
@@ -146,7 +151,8 @@ function render(): void {
   const d = display ?? screen.getPrimaryDisplay()
   // Just below the menu bar, clear of a MacBook's camera notch.
   const top = d.workArea.y - d.bounds.y + 10
-  const payload = JSON.stringify({ ...state, session, top })
+  const radius = d.internal ? BUILT_IN_TOP_RADIUS : 0
+  const payload = JSON.stringify({ ...state, session, top, radius })
   const draw = () => void w.webContents.executeJavaScript(`window.render && window.render(${payload})`).catch(() => {})
   if (w.webContents.isLoading()) w.webContents.once('did-finish-load', draw)
   else draw()

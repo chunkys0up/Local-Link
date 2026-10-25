@@ -48,6 +48,22 @@ export function friendly(e: JobEvent): string {
 // Agent calls that only organise its own work; not worth showing as "what it's doing".
 const BOOKKEEPING = /: (TodoWrite|Script|ToolSearch|(retronaut|locallink)___\w+)( error)?$/
 
+/** The last few things it did that a person would care about. */
+export function recentSteps(job: JobSnapshot, count: number): JobEvent[] {
+  return job.events.filter((e) => !BOOKKEEPING.test(e.label) && (e.kind !== 'info' || e.label.startsWith('Test'))).slice(-count)
+}
+
+/** What the build or run is doing, in a couple of words. */
+export function jobTitle(job: JobSnapshot): string {
+  const running = live(job.status)
+  if (job.kind === 'build') {
+    if (!running) return job.status === 'passed' ? 'Workflow built' : 'Build stopped'
+    return job.requests.some((r) => r.status === 'pending') ? 'Waiting for you' : `${BUILD_PHASES[buildPhase(job)].label}…`
+  }
+  if (!running) return job.status === 'passed' ? 'Run finished' : 'Run failed'
+  return job.events.some((e) => e.label === 'Healing') ? 'Healing…' : 'Running…'
+}
+
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
@@ -55,9 +71,9 @@ export function formatDuration(seconds: number): string {
 
 /**
  * The live build or run at a glance: what it's doing, its phase, the latest screenshot
- * and the last few actions. In the app, and (compact) in the picture-in-picture.
+ * and the last few actions.
  */
-export function BuildCard({ job, onStop, compact = false }: { job: JobSnapshot; onStop?: () => void; compact?: boolean }) {
+export function BuildCard({ job, onStop }: { job: JobSnapshot; onStop?: () => void }) {
   const [now, setNow] = useState(() => Date.now() / 1000)
   const running = live(job.status)
   useEffect(() => {
@@ -69,28 +85,13 @@ export function BuildCard({ job, onStop, compact = false }: { job: JobSnapshot; 
   const pending = job.requests.filter((r) => r.status === 'pending')
   const phase = job.kind === 'build' ? buildPhase(job) : -1
   const shot = [...job.events].reverse().find((e) => e.image)
-  const recent = job.events.filter((e) => !BOOKKEEPING.test(e.label) && (e.kind !== 'info' || e.label.startsWith('Test'))).slice(compact ? -3 : -4)
+  const recent = recentSteps(job, 4)
   const latest = job.events[job.events.length - 1]
   const elapsed = (running ? now : (job.finished ?? now)) - job.started
-  const title =
-    job.kind === 'build'
-      ? running
-        ? pending.length
-          ? 'Waiting for you'
-          : `${BUILD_PHASES[phase].label}…`
-        : job.status === 'passed'
-          ? 'Workflow built'
-          : 'Build stopped'
-      : running
-        ? job.events.some((e) => e.label === 'Healing')
-          ? 'Healing…'
-          : 'Running…'
-        : job.status === 'passed'
-          ? 'Run finished'
-          : 'Run failed'
+  const title = jobTitle(job)
 
   return (
-    <section className={`card build ${running ? 'build-live' : `build-${job.status}`}${compact ? ' compact' : ''}`} aria-live="polite">
+    <section className={`card build ${running ? 'build-live' : `build-${job.status}`}`} aria-live="polite">
       <div className="build-top">
         <div className={`orb${running && !pending.length ? ' orb-live' : ''}`} aria-hidden="true">
           <span />
