@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 
 import { api, inElectron, openPrivacy, type Health } from './api'
 import arrow from './assets/arrow-up-right.svg'
@@ -28,6 +28,19 @@ const TILES: [number, number][] = [
 
 const at = (column: number, row: number, span = 1): CSSProperties => ({ gridColumn: `${column} / span ${span}`, gridRow: row })
 
+/** A tile's blink: its own slow cycle, a start part-way through it, and how bright it gets. */
+function blink(): CSSProperties {
+  const duration = 5 + Math.random() * 9
+  return {
+    '--bit-duration': `${duration.toFixed(2)}s`,
+    '--bit-delay': `${(-Math.random() * duration).toFixed(2)}s`,
+    '--bit-peak': (0.35 + Math.random() * 0.65).toFixed(2),
+  } as CSSProperties
+}
+
+const COMPOSER_INSET = 24 // the composer's distance from the edges of its slot
+const BELOW_HERO = 32 // how close the growing composer may come to the subtitle
+
 function Check({ ok, label, detail, fix }: { ok: boolean | null; label: string; detail: string; fix?: { label: string; run: () => void } }) {
   return (
     <li className={`check ${ok === null ? 'check-unknown' : ok ? 'check-ok' : 'check-bad'}`}>
@@ -51,6 +64,36 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
   const [error, setError] = useState<string | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const box = useRef<HTMLTextAreaElement>(null)
+  const blinks = useMemo(() => TILES.map(blink), [])
+  const hero = useRef<HTMLDivElement>(null)
+  const slot = useRef<HTMLDivElement>(null)
+  const form = useRef<HTMLFormElement>(null)
+
+  // The composer fills its slot, grows upwards with its text until it nears the
+  // headline, then stops and scrolls inside.
+  const fit = useCallback(() => {
+    const text = box.current
+    const card = form.current
+    if (!text || !card || !slot.current || !hero.current) return
+    text.style.height = '0px'
+    const chrome = card.offsetHeight // padding, button row and gaps, without the text
+    const content = text.scrollHeight
+    const slotBox = slot.current.getBoundingClientRect()
+    const stacked = getComputedStyle(card).position !== 'absolute' // small screens: no growing upwards
+    const smallest = stacked ? 96 : slotBox.height - COMPOSER_INSET * 2 - chrome
+    const tallest = stacked
+      ? 280
+      : slotBox.bottom - COMPOSER_INSET - (hero.current.getBoundingClientRect().bottom + BELOW_HERO) - chrome
+    const height = Math.max(smallest, Math.min(content, Math.max(smallest, tallest)))
+    text.style.height = `${height}px`
+    text.style.overflowY = content > height ? 'auto' : 'hidden'
+  }, [])
+
+  useLayoutEffect(fit, [fit, prompt, error])
+  useEffect(() => {
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [fit])
 
   useEffect(() => {
     const load = () => api<Health>('/health').then(setHealth).catch(() => setHealth(null))
@@ -111,7 +154,7 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
         </section>
       )}
 
-      <div className="home-hero">
+      <div className="home-hero" ref={hero}>
         <h1>
           Let’s <span className="retro">Retro</span>automate your finance workflows.
         </h1>
@@ -121,12 +164,12 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
       </div>
 
       <div className="home-stage">
-        {TILES.map(([c, r]) => (
-          <span key={`${c}-${r}`} className="tile" style={at(c, r)} aria-hidden="true" />
+        {TILES.map(([c, r], i) => (
+          <span key={`${c}-${r}`} className="tile" style={{ ...at(c, r), ...blinks[i] }} aria-hidden="true" />
         ))}
 
-        <div className="composer-slot">
-          <form className="composer" onSubmit={submit}>
+        <div className="composer-slot" ref={slot}>
+          <form className="composer" ref={form} onSubmit={submit}>
             <textarea
               ref={box}
               value={prompt}
@@ -136,6 +179,7 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
               autoFocus
               aria-label="Describe the workflow to automate"
             />
+            {error && <p className="request-error">{error}</p>}
             <div className="composer-foot">
               {prompt && <span className="hint">Enter to build · Shift+Enter for a new line</span>}
               <button type="submit" disabled={!prompt.trim() || busy}>
@@ -144,7 +188,6 @@ export function Home({ onStart }: { onStart: (prompt: string) => Promise<void> }
               </button>
             </div>
           </form>
-          {error && <p className="request-error">{error}</p>}
         </div>
 
         {SUGGESTIONS.map((s, i) => (

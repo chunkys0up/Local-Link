@@ -37,6 +37,8 @@
 .side-brand .brand-mark {
   width: 28px;
   height: 28px;
+  background: none;
+  object-fit: cover;
 }
 .side-name {
   font-size: 15px;
@@ -247,6 +249,7 @@ button.side-item.active:hover:not(:disabled) {
 }
 .home-hero h1 .retro {
   color: var(--accent-text);
+  font-weight: 400;
 }
 .home-hero p {
   font-size: 15px;
@@ -267,23 +270,47 @@ button.side-item.active:hover:not(:disabled) {
   gap: 4px;
 }
 .tile {
+  position: relative;
   border-radius: var(--radius);
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
 }
+/* Each tile softly lights up now and then, like bits blinking: its own speed, start
+   and brightness come from Home, and it only fades, never snaps. */
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  animation: bit var(--bit-duration, 8s) ease-in-out var(--bit-delay, 0s) infinite;
+}
+@keyframes bit {
+  0%,
+  58%,
+  100% {
+    opacity: 0;
+  }
+  74% {
+    opacity: var(--bit-peak, 0.8);
+  }
+}
 .composer-slot {
+  position: relative;
   grid-column: 3 / span 8;
   grid-row: 1 / span 3;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 24px;
   min-height: 0;
 }
+/* Anchored to the bottom of its slot, so more lines grow it upwards, towards the
+   headline; Home caps the height there and the text scrolls inside. */
 .composer {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  z-index: 2;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -299,8 +326,7 @@ button.side-item.active:hover:not(:disabled) {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18), 0 0 0 4px rgba(255, 255, 255, 0.16);
 }
 .composer textarea {
-  flex: 1;
-  min-height: 0;
+  display: block;
   border: 0;
   outline: 0;
   resize: none;
@@ -335,7 +361,7 @@ button.side-item.active:hover:not(:disabled) {
 .composer button[type='submit']:disabled {
   opacity: 0.85;
 }
-.composer-slot .request-error {
+.composer .request-error {
   margin: 0;
 }
 
@@ -348,10 +374,10 @@ button.chip {
   padding: 10px 10px 10px 16px;
   border: 0;
   border-radius: var(--radius);
-  background: var(--glass-strong);
+  background: rgba(255, 255, 255, 0.15);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.68);
   font-size: 12px;
   font-style: italic;
   font-weight: 400;
@@ -361,7 +387,7 @@ button.chip {
   transition: background-color 0.15s, color 0.15s, transform 0.15s;
 }
 button.chip:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.21);
   color: #fff;
   transform: translateY(-1px);
 }
@@ -381,7 +407,12 @@ button.chip img {
   .composer-slot {
     grid-column: 1 / -1;
     grid-row: auto;
-    min-height: 220px;
+    min-height: 0;
+  }
+  .composer {
+    position: relative;
+    inset: auto;
+    margin: 24px;
   }
   .home-stage button.chip {
     grid-column: 1 / -1 !important;

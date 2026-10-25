@@ -5,6 +5,7 @@
  */
 
 import { app, BrowserWindow, ipcMain, shell, systemPreferences } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { onAttention } from './jobs'
@@ -80,7 +81,12 @@ function createWindow(): void {
   mainWindow = win
 }
 
+// The Dock icon. A packaged app gets it from build/icon.icns; in dev the Dock would
+// otherwise show Electron's own icon.
+const DOCK_ICON = join(__dirname, '..', 'build', 'icon.png')
+
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin' && existsSync(DOCK_ICON)) app.dock?.setIcon(DOCK_ICON)
   try {
     await serve(DEV_URL ? undefined : join(__dirname, 'renderer'))
   } catch (e) {
