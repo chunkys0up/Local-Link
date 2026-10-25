@@ -170,7 +170,8 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 8px 16px;
   flex: 0 1 auto;
 }
 /* Same size as the section titles (Live events, Ledger) */
@@ -470,6 +471,7 @@ button.events-bar:focus-visible { outline-offset: -2px; }
 .dot-info { background: var(--accent); }
 .dot-agent { background: var(--subtle); }
 .dot-ok { background: var(--ok); }
+.dot-ui { background: var(--warn); }
 .dot-fail,
 .dot-error,
 .dot-denied { background: var(--bad); }

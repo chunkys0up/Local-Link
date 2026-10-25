@@ -20,11 +20,12 @@ _tasks: set[asyncio.Task] = set()
 class ConnectBody(BaseModel):
     app: str = Field(min_length=1)
     data_path: str = Field(min_length=1)
+    allow_ui: bool = False  # let the agent drive the app's UI from the first attempt
 
 
 @app.post("/connect", status_code=202)
 async def connect(body: ConnectBody) -> dict:
-    run = pipeline.new_run(body.app, body.data_path)
+    run = pipeline.new_run(body.app, body.data_path, body.allow_ui)
     task = asyncio.create_task(pipeline.execute(run))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)

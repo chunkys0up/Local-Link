@@ -9,7 +9,7 @@ type Status = 'running' | 'passed' | 'needs_human' | 'error' | 'lost'
 type RunEvent = {
   i: number
   ts: number
-  kind: 'info' | 'agent' | 'ok' | 'fail' | 'error' | 'denied'
+  kind: 'info' | 'agent' | 'ok' | 'fail' | 'error' | 'denied' | 'ui'
   label: string
   detail: string
 }
@@ -591,6 +591,7 @@ function App() {
   const [requestError, setRequestError] = useState<string | null>(null)
   const [changesOnly, setChangesOnly] = useState(false)
   const [apiOpen, setApiOpen] = useState(false)
+  const [allowUi, setAllowUi] = useState(false)
   // Live events start as a one-line bar; the choice is remembered in this browser
   const [eventsOpen, setEventsOpen] = useState(() => {
     try {
@@ -716,7 +717,7 @@ function App() {
       const { run_id } = await getJson<{ run_id: string }>('/api/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app, data_path: dataPath }),
+        body: JSON.stringify({ app, data_path: dataPath, allow_ui: allowUi }),
       })
       setRun(await getJson<RunSnapshot>(`/api/events?run_id=${run_id}`))
     } catch (err) {
@@ -845,6 +846,13 @@ function App() {
             />
           </div>
           <div className="actions">
+            <label
+              className="toggle small"
+              title="Let the agent drive the app's menus with AppleScript and take screenshots from the start. Otherwise it only does this on the repair attempt."
+            >
+              <input type="checkbox" checked={allowUi} disabled={running} onChange={(e) => setAllowUi(e.target.checked)} />
+              Allow UI automation
+            </label>
             <button type="submit" disabled={running}>
               {running && <span className="spinner" aria-hidden="true" />}
               {running ? 'Connecting…' : 'Connect'}
@@ -904,6 +912,7 @@ function App() {
               <ul className="legend muted" aria-label="Legend">
                 <li><span className="dot dot-info" aria-hidden="true" />Pipeline step</li>
                 <li><span className="dot dot-agent" aria-hidden="true" />Agent activity</li>
+                <li><span className="dot dot-ui" aria-hidden="true" />UI action</li>
                 <li><span className="dot dot-ok" aria-hidden="true" />Passed</li>
                 <li><span className="dot dot-fail" aria-hidden="true" />Failed or blocked</li>
               </ul>

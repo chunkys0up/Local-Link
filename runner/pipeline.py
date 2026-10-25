@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 import layout
 import ledger
-from agent import SCRIPT, run_agent
+from agent import SCRIPT, UiScope, run_agent
 from checker import CheckResult, check
 from rows import NormalizedRow
 
@@ -40,6 +40,7 @@ class Run:
     used_cache: bool = False
     changes: dict | None = None
     ledger_id: str = ""
+    allow_ui: bool = False  # UI automation from the first attempt, not only on repair
 
     def emit(self, kind: str, label: str, detail: str = "") -> None:
         self.events.append(
@@ -57,6 +58,7 @@ class Run:
             "used_cache": self.used_cache,
             "changes": self.changes,
             "ledger_id": self.ledger_id,
+            "allow_ui": self.allow_ui,
             "events": self.events[after:],
         }
 
@@ -64,12 +66,13 @@ class Run:
 RUNS: dict[str, Run] = {}
 
 
-def new_run(app: str, data_path: str) -> Run:
+def new_run(app: str, data_path: str, allow_ui: bool = False) -> Run:
     run = Run(
         id=f"run_{uuid.uuid4().hex[:8]}",
         app=app,
         data_path=data_path,
         ledger_id=ledger.ledger_id(app, data_path),
+        allow_ui=allow_ui,
     )
     RUNS[run.id] = run
     return run
@@ -193,8 +196,11 @@ async def execute(run: Run) -> None:
         for attempt in (1, 2):
             label = "Extractor agent started" if attempt == 1 else "Repair: rerunning the agent with the error"
             run.emit("info", label, f"read-only: {data_path}")
+            ui = _ui_scope(run, attempt)
+            if ui:
+                run.emit("ui", "UI automation enabled", f"osascript on {ui.app} only, screenshots into the run folder")
             try:
-                await run_agent(run.app, data_path, workspace, run.emit, error)
+                await run_agent(run.app, data_path, workspace, run.emit, error, ui)
             except Exception as e:  # still check whatever script it left behind
                 run.emit("error", "Extractor agent session crashed", f"{type(e).__name__}: {e}")
             result, rows = await asyncio.to_thread(evaluate, run, workspace, data_path)
@@ -214,6 +220,15 @@ async def execute(run: Run) -> None:
         if workspace is not None:
             shutil.rmtree(workspace, ignore_errors=True)
         _record(run)
+
+
+def _ui_scope(run: Run, attempt: int) -> UiScope | None:
+    """UI automation is the last rung: on the repair attempt, or from the start if opted in."""
+    if run.allow_ui and attempt == 1:
+        return UiScope(Path(run.app).stem, why="The user turned on UI automation for this run.")
+    if attempt == 2:
+        return UiScope(Path(run.app).stem)
+    return None
 
 
 def _record(run: Run) -> None:

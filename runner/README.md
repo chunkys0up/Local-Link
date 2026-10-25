@@ -38,6 +38,24 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
   (app, source), plus `ledger_changes` history. Saved extractors stay per app in `cache/`.
 - Data persists across restarts; use `POST /reset` to start over.
 
+## UI automation
+
+The last rung, for data the agent can't read directly. On the repair attempt (or from the
+start with `"allow_ui": true` on `/connect`, the dashboard's "Allow UI automation" box)
+the agent may also run, one at a time:
+
+- `osascript -e ...` that only targets the picked app, or `System Events` process of that
+  app. No `do shell script`, script files, other apps, or file/delete commands.
+- `screencapture` into the run's temp folder.
+- `cliclick` if installed (not `-f`).
+
+Each allowed UI command shows in the run's events as a "UI action". macOS needs the
+terminal running uvicorn to have Accessibility and Screen Recording (System Settings >
+Privacy & Security), and asks once to let it control the app and System Events.
+GTK apps like GnuCash expose only their menu bar to AppleScript, so the agent is told to
+use the app's own Export menu and keystrokes. This narrows what droid can run; it isn't a
+sandbox, since a `.py` it writes in its folder can still call anything.
+
 ## Querying
 
 Every query is read-only. Filters combine and are all optional; `account` includes its
