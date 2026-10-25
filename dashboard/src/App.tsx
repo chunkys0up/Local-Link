@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import './App.css'
+import { ApiPanel } from './ApiPanel'
 
 // 'lost' is set by the dashboard, not the runner: the run vanished (runner restarted)
 // or the runner stopped answering.
@@ -589,6 +590,7 @@ function App() {
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
   const [changesOnly, setChangesOnly] = useState(false)
+  const [apiOpen, setApiOpen] = useState(false)
   // Live events start as a one-line bar; the choice is remembered in this browser
   const [eventsOpen, setEventsOpen] = useState(() => {
     try {
@@ -941,6 +943,11 @@ function App() {
         )}
       </section>
 
+      {apiOpen && ledgerId && (() => {
+        const source = ledgers.find((l) => l.id === ledgerId)
+        return source ? <ApiPanel source={source} rows={ledger} onClose={() => setApiOpen(false)} /> : null
+      })()}
+
       <div className="workspace">
         <section className="card ledger">
           {/* One compact row: what this is and what the last load did, then the filters */}
@@ -971,6 +978,11 @@ function App() {
                   />
                   Changes only
                 </label>
+              )}
+              {ledgerId && (
+                <button type="button" className="secondary api-open" onClick={() => setApiOpen(true)}>
+                  Use API
+                </button>
               )}
               {ledgers.length > 0 && (
               <Select

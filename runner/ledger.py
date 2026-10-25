@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 from rows import NormalizedRow
@@ -45,6 +46,15 @@ create table if not exists ledger_source (
     id integer primary key check (id = 1),
     app text not null,
     data_path text not null
+);
+create table if not exists runs (
+    run_id text primary key,
+    status text not null,
+    started real not null,
+    finished real not null,
+    used_cache integer not null,
+    rows_loaded integer,
+    gap text not null
 );
 """
 
@@ -166,6 +176,133 @@ def apply(
         )
 
 
+def _under(account: str) -> tuple[str, list]:
+    """SQL matching an account and every account below it ("Expenses" -> "Expenses:Rent")."""
+    return "(account = ? or substr(account, 1, length(?) + 1) = ? || ':')", [account, account, account]
+
+
+def query_rows(
+    db_path: Path,
+    *,
+    account: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    search: str | None = None,
+    side: str | None = None,
+    min_amount: Decimal | None = None,
+    max_amount: Decimal | None = None,
+    run_id: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Rows matching every filter given, oldest first, plus how many match in total."""
+    if not db_path.exists():
+        return [], 0
+    where, params = [], []
+    if account:
+        clause, args = _under(account)
+        where.append(clause)
+        params += args
+    if date_from:
+        where.append("date >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append("date <= ?")
+        params.append(date_to)
+    if search:
+        # instr instead of LIKE so % and _ in the search text are taken literally
+        where.append("(instr(lower(memo), lower(?)) or instr(lower(account), lower(?)) or instr(lower(source), lower(?)))")
+        params += [search] * 3
+    if side:
+        where.append("side = ?")
+        params.append(side)
+    if min_amount is not None:
+        where.append("cast(amount as real) >= ?")
+        params.append(float(min_amount))
+    if max_amount is not None:
+        where.append("cast(amount as real) <= ?")
+        params.append(float(max_amount))
+    if run_id:
+        where.append("run_id = ?")
+        params.append(run_id)
+    clause = f" where {' and '.join(where)}" if where else ""
+    with connect(db_path) as conn:
+        total = conn.execute(f"select count(*) from ledger{clause}", params).fetchone()[0]
+        cursor = conn.execute(
+            "select app, date, account, amount, side, memo, source, run_id"
+            f" from ledger{clause} order by date, app, source limit ? offset ?",
+            [*params, limit, offset],
+        )
+        return [dict(r) for r in cursor], total
+
+
+def balances(db_path: Path, *, account: str | None = None, as_of: str | None = None) -> list[dict]:
+    """Debit and credit totals per account, and the balance (debits minus credits)."""
+    if not db_path.exists():
+        return []
+    where, params = [], []
+    if account:
+        clause, args = _under(account)
+        where.append(clause)
+        params += args
+    if as_of:
+        where.append("date <= ?")
+        params.append(as_of)
+    clause = f" where {' and '.join(where)}" if where else ""
+    totals: dict[str, dict] = {}
+    with connect(db_path) as conn:
+        for r in conn.execute(f"select account, amount, side from ledger{clause}", params):
+            t = totals.setdefault(r["account"], {"debits": Decimal(0), "credits": Decimal(0), "rows": 0})
+            t["debits" if r["side"] == "debit" else "credits"] += Decimal(r["amount"])
+            t["rows"] += 1
+    # Summed in Decimal and returned as strings so cents stay exact
+    return [
+        {
+            "account": name,
+            "debits": f"{t['debits']:.2f}",
+            "credits": f"{t['credits']:.2f}",
+            "balance": f"{t['debits'] - t['credits']:.2f}",
+            "rows": t["rows"],
+        }
+        for name, t in sorted(totals.items())
+    ]
+
+
+def changes(
+    db_path: Path,
+    *,
+    run_id: str | None = None,
+    change: str | None = None,
+    since: float | None = None,
+    limit: int = 1000,
+) -> list[dict]:
+    """The change history, newest first. since: only changes recorded after this Unix time."""
+    if not db_path.exists():
+        return []
+    where, params = [], []
+    if since is not None:
+        where.append("at > ?")
+        params.append(since)
+    if run_id:
+        where.append("run_id = ?")
+        params.append(run_id)
+    if change:
+        where.append("change = ?")
+        params.append(change)
+    clause = f" where {' and '.join(where)}" if where else ""
+    with connect(db_path) as conn:
+        cursor = conn.execute(
+            f"select run_id, change, source, before, after, at from ledger_changes{clause}"
+            " order by at desc, id desc limit ?",
+            [*params, limit],
+        )
+        return [
+            {**dict(r), "before": json.loads(r["before"]) if r["before"] else None,
+             "after": json.loads(r["after"]) if r["after"] else None}
+            for r in cursor
+        ]
+
+
 def all_rows(db_path: Path, limit: int = 1000) -> list[dict]:
     if not db_path.exists():
         return []
@@ -176,6 +313,31 @@ def all_rows(db_path: Path, limit: int = 1000) -> list[dict]:
             (limit,),
         )
         return [dict(r) for r in cursor]
+
+
+def record_run(db_path: Path, app: str, data_path: str, run: dict) -> None:
+    """Keep the outcome of every run on this source, including ones that loaded nothing."""
+    with connect(db_path) as conn:
+        # A source whose first run needs a human still gets listed, with 0 rows.
+        conn.execute(
+            "insert or ignore into ledger_source (id, app, data_path) values (1, ?, ?)", (app, data_path)
+        )
+        conn.execute(
+            "insert or replace into runs (run_id, status, started, finished, used_cache, rows_loaded, gap)"
+            " values (?, ?, ?, ?, ?, ?, ?)",
+            (run["run_id"], run["status"], run["started"], run["finished"], int(run["used_cache"]),
+             run["rows_loaded"], json.dumps(run["gap"])),
+        )
+
+
+def runs(db_path: Path, *, status: tuple[str, ...] = (), limit: int = 100) -> list[dict]:
+    """Recorded runs, newest first, optionally only those with one of the given statuses."""
+    if not db_path.exists():
+        return []
+    clause = f" where status in ({', '.join('?' * len(status))})" if status else ""
+    with connect(db_path) as conn:
+        cursor = conn.execute(f"select * from runs{clause} order by finished desc limit ?", [*status, limit])
+        return [{**dict(r), "used_cache": bool(r["used_cache"]), "gap": json.loads(r["gap"])} for r in cursor]
 
 
 def reset() -> None:

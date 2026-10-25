@@ -213,3 +213,25 @@ async def execute(run: Run) -> None:
     finally:
         if workspace is not None:
             shutil.rmtree(workspace, ignore_errors=True)
+        _record(run)
+
+
+def _record(run: Run) -> None:
+    """Persist the run's outcome next to its ledger, for provenance and flagged runs."""
+    try:
+        ledger.record_run(
+            ledger.path_for(run.ledger_id),
+            run.app,
+            str(Path(run.data_path).expanduser().resolve()),
+            {
+                "run_id": run.id,
+                "status": run.status,
+                "started": run.events[0]["ts"] if run.events else time.time(),
+                "finished": time.time(),
+                "used_cache": run.used_cache,
+                "rows_loaded": run.rows_loaded,
+                "gap": run.gap,
+            },
+        )
+    except Exception as e:  # never let bookkeeping hide the run's own result
+        run.emit("error", "Couldn't record the run", f"{type(e).__name__}: {e}")

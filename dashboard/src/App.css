@@ -942,3 +942,57 @@ td.num { font-weight: 500; }
 @media (max-width: 640px) {
   .events-bar-meta { display: none; }
 }
+
+/* Use API panel: templated, read-only examples for the selected ledger */
+button.api-open { height: 32px; padding: 0 12px; }
+button.api-small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.api-panel {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.api-panel::backdrop { background: rgba(17, 24, 39, 0.35); }
+.api-panel-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.api-panel-head p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.api-examples { list-style: none; margin: 0; padding: 0; }
+.api-example { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.api-example:last-child { border-bottom: 0; }
+.api-example p { margin: 0; }
+.api-example-head { display: flex; align-items: center; gap: 8px; }
+.api-method {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.api-get { background: var(--accent-soft); color: var(--accent-text); }
+.api-post { background: var(--ok-soft); color: var(--ok-text); }
+.api-code {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.api-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.api-result { display: flex; flex-direction: column; gap: 4px; }

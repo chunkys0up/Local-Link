@@ -1,0 +1,13 @@
+Date,Payee,Category,Notes,Amount
+2026-10-01,Starting Balance,,,5000.00
+2026-10-02,Staples #0412,General,,-47.18
+2026-10-02,Staples #0412,General,,-47.18
+2026-10-03,Acme Corp,Income,Invoice 1041,2400.00
+2026-10-05,PG&E,Bills,,-182.40
+2026-10-07,Trader Joe's,Food,,-63.25
+2026-10-09,STAPLES,General,,-19.99
+2026-10-12,Comcast,Bills,,-89.99
+2026-10-15,Staples refund,General,,19.99
+2026-10-18,Beta LLC,Income,Invoice 1042,1150.00
+2026-10-20,Transfer to Savings,,,-500.00
+2026-10-24,UNKNOWN WITHDRAWAL,,,-50.00

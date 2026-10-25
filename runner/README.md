@@ -16,7 +16,7 @@ curl "localhost:8000/events?run_id=<id>"   # steps so far, status, and the load'
 curl localhost:8000/apps                   # installed Mac apps: name, bundle ID, version, kind
 curl "localhost:8000/apps/data?path=/Applications/Gnucash.app"  # likely data files for one app
 curl localhost:8000/ledgers                # one ledger per source (app + data path)
-curl "localhost:8000/ledger?ledger_id=<id>" # that ledger's rows
+curl "localhost:8000/ledger?ledger_id=<id>" # that ledger's rows (filters below)
 curl -X POST localhost:8000/reset          # testing: clear ledger, change history, saved extractors
 ```
 
@@ -37,3 +37,25 @@ curl -X POST localhost:8000/reset          # testing: clear ledger, change histo
 - `ledger.py`: one SQLite file per source in `ledgers/<app>-<path hash>.db`, keyed on
   (app, source), plus `ledger_changes` history. Saved extractors stay per app in `cache/`.
 - Data persists across restarts; use `POST /reset` to start over.
+
+## Querying
+
+Every query is read-only. Filters combine and are all optional; `account` includes its
+subaccounts, dates are inclusive `YYYY-MM-DD`.
+
+```bash
+L=<ledger id from /ledgers>
+curl "localhost:8000/ledger?ledger_id=$L&account=Expenses&search=staples&from=2026-06-01&to=2026-06-30&min=10&max=500&side=debit"
+                                                       # rows + total + provenance (file, runs, checker)
+curl "localhost:8000/ledgers/$L/balances?as_of=2026-09-30"           # per account, as of a date
+curl "localhost:8000/ledgers/$L/changes?since_run=<run id>"          # added / changed / deleted after a run
+curl "localhost:8000/ledgers/$L/runs"                                # every run on this source and its outcome
+curl "localhost:8000/ledgers/$L/flags"                               # needs-human runs with reasons, suspense balances
+curl "localhost:8000/ledgers/$L/monthly?account=Expenses&depth=1"    # per month per account
+curl "localhost:8000/ledgers/$L/monthly?by=payee&from=2026-06-01"    # per month per payee (memo)
+curl -X POST "localhost:8000/ledgers/$L/sql" -H 'Content-Type: application/json' \
+  -d '{"query": "select account, count(*) from ledger group by account"}'  # one SELECT, read-only
+```
+
+Run outcomes are kept in each ledger's `runs` table, so provenance and flags survive restarts.
+Runs from before this change only show up through their changes.
