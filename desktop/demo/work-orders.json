@@ -1,0 +1,30 @@
+{
+  "about": "Demo emails: completed work orders from Northwind Repair's dispatcher. Two emails share WO-1042 (a follow-up visit), so the workflow must total per work-order number. Send the first five before the demo; send the 'live' one during it to show a rerun picking up only the new order. Expected invoices: WO-1042 Acme $419.20, WO-1043 Brightside $344.50, WO-1044 Harbor View $423.49, WO-1045 Acme $691.20; live WO-1046 Brightside $264.00.",
+  "subject_prefix": "Work order",
+  "emails": [
+    {
+      "subject": "Work order WO-1042 completed - Acme Property Management",
+      "body": "Hi,\n\nWork order WO-1042 is complete. Details below for invoicing.\n\nWork order: WO-1042\nCustomer: Acme Property Management\nSite: 410 Market St, Unit 3B\nDate completed: 2026-10-20\nTechnician: Dana Ortiz\n\nWork performed: Replaced leaking kitchen faucet cartridge and both supply lines.\n\nLabor: 2.5 hrs @ $95.00/hr = $237.50\nParts:\n- Moen 1225 cartridge, qty 1 @ $38.40 = $38.40\n- Braided supply line 20in, qty 2 @ $12.75 = $25.50\n\nTotal for this visit: $301.40\n\nThanks,\nNorthwind Dispatch"
+    },
+    {
+      "subject": "Work order WO-1043 completed - Brightside Dental Group",
+      "body": "Hi,\n\nWork order WO-1043 is complete.\n\nWork order: WO-1043\nCustomer: Brightside Dental Group\nSite: 88 Valencia St\nDate completed: 2026-10-21\nTechnician: Sam Whitfield\n\nWork performed: Replaced HVAC filters in all four air handlers and installed a new programmable thermostat in the front office.\n\nLabor: 1.5 hrs @ $95.00/hr = $142.50\nParts:\n- MERV-13 filter 20x25x1, qty 4 @ $18.25 = $73.00\n- Honeywell T6 Pro thermostat, qty 1 @ $129.00 = $129.00\n\nTotal for this visit: $344.50\n\nThanks,\nNorthwind Dispatch"
+    },
+    {
+      "subject": "Work order WO-1042 follow-up visit - Acme Property Management",
+      "body": "Hi,\n\nWe went back out on WO-1042: the shutoff valve under the sink was also failing, so the tech replaced it. Please add this to the same work order.\n\nWork order: WO-1042\nCustomer: Acme Property Management\nSite: 410 Market St, Unit 3B\nDate completed: 2026-10-22\nTechnician: Dana Ortiz\n\nWork performed: Replaced quarter-turn angle stop valve.\n\nLabor: 1.0 hrs @ $95.00/hr = $95.00\nParts:\n- 1/2in angle stop valve, qty 1 @ $22.80 = $22.80\n\nTotal for this visit: $117.80\n\nThanks,\nNorthwind Dispatch"
+    },
+    {
+      "subject": "Work order WO-1044 completed - Harbor View Apartments",
+      "body": "Hi,\n\nWork order WO-1044 is complete.\n\nWork order: WO-1044\nCustomer: Harbor View Apartments\nSite: 1200 Embarcadero, Unit 12\nDate completed: 2026-10-22\nTechnician: Sam Whitfield\n\nWork performed: Replaced front door deadbolt after tenant move-out and replaced three expired smoke detectors.\n\nLabor: 3.0 hrs @ $95.00/hr = $285.00\nParts:\n- Schlage B60N deadbolt, qty 1 @ $64.99 = $64.99\n- Kidde smoke detector, qty 3 @ $24.50 = $73.50\n\nTotal for this visit: $423.49\n\nThanks,\nNorthwind Dispatch"
+    },
+    {
+      "subject": "Work order WO-1045 completed - Acme Property Management (after hours)",
+      "body": "Hi,\n\nEmergency call on WO-1045, after hours, so the after-hours labor rate applies.\n\nWork order: WO-1045\nCustomer: Acme Property Management\nSite: 410 Market St, Boiler Room\nDate completed: 2026-10-23\nTechnician: Dana Ortiz\n\nWork performed: No hot water building-wide. Diagnosed and replaced the water heater thermostat, relit and tested.\n\nLabor: 4.0 hrs @ $142.50/hr = $570.00\nParts:\n- Water heater thermostat, qty 1 @ $46.20 = $46.20\nTrip charge: $75.00\n\nTotal for this visit: $691.20\n\nThanks,\nNorthwind Dispatch"
+    }
+  ],
+  "live": {
+    "subject": "Work order WO-1046 completed - Brightside Dental Group",
+    "body": "Hi,\n\nWork order WO-1046 is complete.\n\nWork order: WO-1046\nCustomer: Brightside Dental Group\nSite: 88 Valencia St, Operatory 2\nDate completed: 2026-10-24\nTechnician: Sam Whitfield\n\nWork performed: Replaced flickering LED panel and its driver.\n\nLabor: 2.0 hrs @ $95.00/hr = $190.00\nParts:\n- 2x4 LED panel, qty 1 @ $58.00 = $58.00\n- LED driver, qty 1 @ $16.00 = $16.00\n\nTotal for this visit: $264.00\n\nThanks,\nNorthwind Dispatch"
+  }
+}
