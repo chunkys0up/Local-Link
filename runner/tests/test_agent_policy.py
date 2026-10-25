@@ -210,3 +210,20 @@ def test_ui_is_the_repair_rung_unless_opted_in():
     assert pipeline._ui_scope(plain, 2).app == "GnuCash"
     opted = pipeline.Run(id="r2", app="GnuCash", data_path=DATA, allow_ui=True)
     assert pipeline._ui_scope(opted, 1).app == "GnuCash"
+
+
+def test_questions_get_answered_so_the_agent_keeps_going():
+    from droid_sdk import QuestionRequest
+    from droid_sdk._high_level.interactions import Question
+
+    from agent import make_question_handler
+
+    events = []
+    request = QuestionRequest(
+        tool_call_id="t1",
+        questions=(Question(index=0, topic="app", question="Can you close GnuCash?", options=(), multi_select=False),),
+    )
+    response = make_question_handler(lambda *e: events.append(e))(request)
+    assert not response.cancelled
+    assert "No one is available" in response.answers[0].answer
+    assert events[0][2] == "Can you close GnuCash?"

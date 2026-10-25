@@ -1,4 +1,5 @@
-"""Droid agent session that writes extract.py into its own temp folder."""
+"""Droid agent sessions in their own temp folder: one writes extract.py (reading an
+app's data), the other writes write.py (adding transactions to it)."""
 
 import re
 import shlex
@@ -13,6 +14,8 @@ from droid_sdk import (
     InteractionHandlers,
     PermissionRequest,
     PermissionResponse,
+    QuestionRequest,
+    QuestionResponse,
     Session,
     SessionConfig,
     ToolCall,
@@ -112,11 +115,91 @@ export via subprocess, wait for the file, and parse it. It must still output eve
 posting line with stable source IDs from the app's data.
 """
 
+WRITE = """\
+Add transactions to the local accounting app "{app}". A copy of its data is at:
+
+    {data_copy}
+
+That copy is inside your working folder and is yours to change; the user's real file is
+never given to you. The transactions to add are in {workspace}/{transactions}: a JSON
+array of {{"date": "YYYY-MM-DD", "description", "num", "splits": [{{"account": full path
+joined by ":", "amount": positive decimal string, "side": "debit" or "credit", "memo"}}]}}.
+Each transaction's debits equal its credits.
+
+## Deliverables in the working folder
+1. method.json, always:
+   {{"method": "api" | "importer" | "file" | "ui" | "none",
+     "summary": "how the write works, in two sentences",
+     "skipped": {{"<each method above the chosen one>": "why it isn't usable here"}},
+     "app_must_be_closed": true or false,
+     "process_names": ["names of the app's processes, as ps shows them"],
+     "lock_files": ["lock files the app keeps, with {{data_path}} for the data path"]}}
+2. write.py, unless the method is "none". Run as:
+       python write.py <data_path> <transactions.json>
+   It adds every transaction and nothing else, then exits 0. If anything is wrong (an
+   account doesn't exist, the data is locked, the app is running, the format isn't what
+   you expect) it changes nothing and exits non-zero with the reason on stderr. Exit 3
+   when the data is locked or the app is running. It must work on any copy of this data,
+   not just the one here.
+
+## Pick the method: go down this list and take the first one that works
+1. api: the app's own scripting interface, command line tool or official library that is
+   installed on this machine and writes through the app's own code.
+2. importer: an import the app can run without its UI, fed a file you generate (CSV,
+   QIF, OFX). It must add to the books, never replace them.
+3. file: writing the data file yourself, only when the format is open and you have
+   confirmed from the data exactly how the app stores a transaction. Mirror an existing
+   transaction field by field: ID format, date formats, time of day, counters, and any
+   metadata the app keeps beside each transaction. Write atomically (one database
+   transaction, or a temp file then rename) and leave everything else as it was, byte
+   for byte where you can. Respect the app's lock (lock table or lock file).
+4. ui: only if UI automation is enabled for this run (see below).
+5. none: if nothing above is safe, write method.json with "none" and the reason. That is
+   an acceptable answer. A guess is not.
+Record in "skipped" why each method above the one you chose doesn't work here.
+
+## Rules for any method
+- Only add. Never change, delete or reorder anything already in the data.
+- Never create accounts. If one is missing, fail.
+- Never write an encrypted, proprietary or undocumented binary format directly.
+- Amounts and dates exactly as given. Python 3 standard library only. No network.
+
+## Prove it before you finish
+extract.py (the app's saved extractor) is in the working folder. Run
+`python extract.py {data_copy}`, then `python write.py {data_copy} {transactions}`, then
+extract again: the new rows must be exactly one per split you were given, and nothing
+else may change. The pipeline repeats this on a fresh copy before the user's file is
+touched. Finish with a short summary of the method and why you chose it.
+
+## The app may be open
+The copy is yours alone, so the app being open doesn't stop you working on it. Don't
+wait for the app to close and don't ask anyone to close it: record its process names and
+lock files in method.json, and the pipeline makes sure it's closed before the user's real
+file is written.
+
+## Access
+- No one can answer questions during this session. Decide from these rules; if you can't
+  go on safely, say why in method.json ("none") and finish.
+- Write files only in {workspace}. Commands are limited to read-only ones, or
+  `python <script>.py` for a script in the working folder. To run other programs, call
+  them from a .py script in the working folder with subprocess.
+- If an action is refused, take an allowed route and keep going.
+"""
+
+WRITE_REPAIR = """
+## Previous attempt failed verification
+Your files are in the working folder. Running write.py on a fresh copy failed:
+{differences}
+
+Fix write.py (or switch method, following the order above). If no method is safe,
+write method.json with "none" and the reason.
+"""
+
 NUDGE = """\
 Your last action was refused by the session policy: {reason}
 
 That doesn't end the task. Take an allowed route (read-only commands, or write a .py
-script in the working folder and run it with python) and finish extract.py.
+script in the working folder and run it with python) and finish {script}.
 """
 
 MAX_NUDGES = 2
@@ -132,6 +215,18 @@ class UiScope:
 
     app: str
     why: str = "Reading the data directly didn't produce rows the checker accepts."
+
+
+def build_write_prompt(
+    app: str, data_copy: Path, workspace: Path, transactions: str, error: list[str] | None,
+    ui: UiScope | None = None,
+) -> str:
+    prompt = WRITE.format(app=app, data_copy=data_copy, workspace=workspace, transactions=transactions)
+    if error:
+        prompt += WRITE_REPAIR.format(differences="\n".join(f"- {d}" for d in error))
+    if ui:
+        prompt += UI.format(app=ui.app, why=ui.why, workspace=workspace)
+    return prompt
 
 
 def build_prompt(
@@ -404,6 +499,23 @@ async def _handle_permission(self: InteractionDispatcher, raw: Mapping[str, obje
 InteractionDispatcher.handle_permission = _handle_permission
 
 
+NO_ONE_HERE = (
+    "No one is available to answer during this session. Decide using your instructions. "
+    "If you can't continue safely, record why in your deliverable and finish."
+)
+
+
+def make_question_handler(emit: Emit):
+    """Droid's AskUser has no human behind it here; answer so the agent decides and keeps going."""
+
+    def on_question(request: QuestionRequest) -> QuestionResponse:
+        for q in request.questions:
+            emit("info", "Asked a question (no one to answer)", _short(q.question))
+        return request.submit([q.answer(NO_ONE_HERE) for q in request.questions])
+
+    return on_question
+
+
 def _short(value: object, limit: int = 240) -> str:
     text = " ".join(str(value).split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -424,41 +536,47 @@ async def run_agent(
     emit: Emit,
     error: list[str] | None = None,
     ui: UiScope | None = None,
+    prompt: str | None = None,
+    done: tuple[str, ...] = (SCRIPT,),
+    name: str = AGENT_NAME,
 ) -> bool:
-    """Run one extractor agent session. Returns whether its last turn finished cleanly."""
+    """Run one agent session: the extractor prompt unless another is given. It's nudged on
+    after a refusal until one of the `done` files exists. Returns whether its last turn
+    finished cleanly."""
     denials: list[str] = []
 
     def tracked_emit(kind: str, label: str, detail: str) -> None:
         if kind == "denied":
             denials.append(detail)
-        emit(kind, f"{AGENT_NAME}: {label}", detail)
+        emit(kind, f"{name}: {label}", detail)
 
     config = SessionConfig(autonomy=Autonomy.OFF)
     interactions = InteractionHandlers(
-        on_permission=make_permission_handler(workspace, tracked_emit, ui)
+        on_permission=make_permission_handler(workspace, tracked_emit, ui),
+        on_question=make_question_handler(tracked_emit),
     )
-    prompt = build_prompt(app, data_path, workspace, error, ui)
+    prompt = prompt or build_prompt(app, data_path, workspace, error, ui)
     async with Session(cwd=workspace, config=config, interactions=interactions) as session:
         for nudge in range(MAX_NUDGES + 1):
             seen = len(denials)
             async with session.stream(prompt, timeout=AGENT_TIMEOUT_SECONDS) as stream:
                 async for event in stream:
                     if isinstance(event, ToolCall):
-                        emit("agent", f"{AGENT_NAME}: {event.name}", _describe_tool_call(event))
+                        emit("agent", f"{name}: {event.name}", _describe_tool_call(event))
                     elif isinstance(event, ToolResult) and event.is_error:
-                        emit("agent", f"{AGENT_NAME}: {event.tool_name} error", _short(event.content))
+                        emit("agent", f"{name}: {event.tool_name} error", _short(event.content))
                     elif isinstance(event, AssistantMessage) and event.text.strip():
-                        emit("agent", f"{AGENT_NAME} says", _short(event.text, 600))
+                        emit("agent", f"{name} says", _short(event.text, 600))
                     elif isinstance(event, ErrorEvent):
-                        emit("error", f"{AGENT_NAME} error", _short(event.message))
+                        emit("error", f"{name} error", _short(event.message))
             result = stream.result
 
             # A refused action ends droid's turn; send it back to work once more.
-            if len(denials) == seen or (workspace / SCRIPT).exists() or nudge == MAX_NUDGES:
+            if len(denials) == seen or any((workspace / f).exists() for f in done) or nudge == MAX_NUDGES:
                 break
-            emit("info", f"{AGENT_NAME} stopped after a refused action", "asking it to continue another way")
-            prompt = NUDGE.format(reason=denials[-1])
+            emit("info", f"{name} stopped after a refused action", "asking it to continue another way")
+            prompt = NUDGE.format(reason=denials[-1], script=done[0])
 
     if not result.success:
-        emit("error", f"{AGENT_NAME} session failed", _short(f"{result.subtype} {result.error or ''}"))
+        emit("error", f"{name} session failed", _short(f"{result.subtype} {result.error or ''}"))
     return result.success

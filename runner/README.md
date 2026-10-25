@@ -56,6 +56,30 @@ GTK apps like GnuCash expose only their menu bar to AppleScript, so the agent is
 use the app's own Export menu and keystrokes. This narrows what droid can run; it isn't a
 sandbox, since a `.py` it writes in its folder can still call anything.
 
+## Writing back
+
+`POST /ledgers/<id>/writes` with `{"transactions": [{"date", "description", "splits":
+[{"account", "amount", "side", "memo"}]}]}` adds transactions to that ledger's source data.
+Nothing touches your file until you call `POST /writes/<write_id>/apply`.
+
+1. A writer agent gets a copy of the data and the rules in `agent.WRITE`. It goes down a
+   fixed list and takes the first method that works: the app's own API or CLI, then the
+   app's importer run without its UI, then writing the open file format itself (mirroring
+   an existing transaction, add only, atomic, lock respected), then UI automation (only
+   with `"allow_ui": true`). If none is safe it says so (`no_method`) instead of guessing.
+   It writes `write.py` and `method.json` (method, why it skipped the ones above it, the
+   app's process names and lock files).
+2. The runner proves `write.py` on a fresh copy with the app's saved extractor: extract,
+   write, extract again. The only difference allowed is one new row per split; existing
+   rows unchanged; the checker still passes if it passed before. Then `ready`.
+3. Apply refuses if the data changed since, the app is running or a lock file exists.
+   It backs the data up to `backups/`, writes, and runs the same proof on the real file;
+   any mismatch restores the backup (`needs_human`). Then the ledger reloads.
+
+Every write is logged in `backups/writes.jsonl`. The writer is cached per app like the
+extractor, but always re-proven on a copy first. Needs a saved extractor, so connect the
+app before writing.
+
 ## Querying
 
 Every query is read-only. Filters combine and are all optional; `account` includes its
