@@ -6,7 +6,7 @@ import { prepareEnvironment } from './startup'
 
 prepareEnvironment()
 serve().then(
-  () => console.log(`Local Link engine on http://127.0.0.1:${PORT}`),
+  () => console.log(`Retronaut engine on http://127.0.0.1:${PORT}`),
   (e) => {
     console.error(`Couldn't start on port ${PORT}: ${(e as Error).message}`)
     process.exit(1)

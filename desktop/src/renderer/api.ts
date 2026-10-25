@@ -31,7 +31,7 @@ type Bridge = {
   openPrivacy: (pane: 'accessibility' | 'screen') => Promise<void>
   onAttention: (listener: (workflowId: string) => void) => () => void
 }
-const bridge = (window as unknown as { localLink?: Bridge }).localLink
+const bridge = (window as unknown as { retronaut?: Bridge }).retronaut
 
 export function openExternal(url: string): void {
   if (bridge) void bridge.openExternal(url)

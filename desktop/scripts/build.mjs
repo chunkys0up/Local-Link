@@ -9,8 +9,8 @@ const configs = [
   { ...common, entryPoints: ['src/main/index.ts'], outfile: 'dist/main.cjs', format: 'cjs', external: ['electron'] },
   { ...common, entryPoints: ['src/main/engine.ts'], outfile: 'dist/engine.cjs', format: 'cjs' },
   { ...common, entryPoints: ['src/main/preload.ts'], outfile: 'dist/preload.cjs', format: 'cjs', external: ['electron'] },
-  // Copied next to every generated script as ./locallink.mjs.
-  { ...common, entryPoints: ['src/runtime/locallink.ts'], outfile: 'dist/locallink.mjs', format: 'esm', sourcemap: false },
+  // Copied next to every generated script as ./retronaut.mjs.
+  { ...common, entryPoints: ['src/runtime/retronaut.ts'], outfile: 'dist/retronaut.mjs', format: 'esm', sourcemap: false },
 ]
 
 if (watch) {

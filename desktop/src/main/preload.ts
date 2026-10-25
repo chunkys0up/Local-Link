@@ -2,7 +2,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 
-contextBridge.exposeInMainWorld('localLink', {
+contextBridge.exposeInMainWorld('retronaut', {
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   openPrivacy: (pane: 'accessibility' | 'screen') => ipcRenderer.invoke('open-privacy', pane),
   /** The engine wants the person to look at a workflow (a question, a card, a result). */

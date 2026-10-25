@@ -40,12 +40,13 @@ export function friendly(e: JobEvent): string {
   if (/^(Create|Edit|ApplyPatch|MultiEdit)\b/.test(label)) return `Writing ${e.detail.split('/').pop() || 'code'}`
   if (/^ToolSearch\b/.test(label)) return 'Looking for the right tools'
   if (/gmail|mail|message|thread/i.test(label)) return 'Reading your email'
-  if (/^locallink___/.test(label)) return label.replace('locallink___', '').replace(/_/g, ' ')
+  // Retronaut's own tools (named locallink___ in runs from before the rename).
+  if (/^(retronaut|locallink)___/.test(label)) return label.replace(/^(retronaut|locallink)___/, '').replace(/_/g, ' ')
   return label
 }
 
 // Agent calls that only organise its own work; not worth showing as "what it's doing".
-const BOOKKEEPING = /: (TodoWrite|Script|ToolSearch|locallink___\w+)( error)?$/
+const BOOKKEEPING = /: (TodoWrite|Script|ToolSearch|(retronaut|locallink)___\w+)( error)?$/
 
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))

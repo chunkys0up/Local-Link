@@ -67,8 +67,8 @@ included. Do the money math in integer cents (or by string), never in floats.
 - If an action is refused, don't stop: take an allowed route and keep going.
 
 ## Rules
-- Node's standard library, plus ./locallink.mjs in the working folder:
-  import { readText, xml, sqlite } from './locallink.mjs'
+- Node's standard library, plus ./retronaut.mjs in the working folder:
+  import { readText, xml, sqlite } from './retronaut.mjs'
   readText(path) gunzips if needed; xml.parse(text) gives objects (attributes as "@name");
   sqlite(path) opens read-only.
 - No network. Your script prints only JSON to stdout.
@@ -95,7 +95,7 @@ If your script is right, leave it and explain why in your summary.
 
 const UI = `
 ## UI automation is enabled for this run
-{why} You may also drive the app's own interface, but only "{app}", with Local Link's
+{why} You may also drive the app's own interface, but only "{app}", with Retronaut's
 tools: screenshot, list_menu, choose_menu, press_keys, type_text, click.
 Screenshots are lower confidence than data: use them to navigate, not as the source of
 numbers. Prefer the app's own export: open its File/Export (or Reports) menu and export
@@ -103,7 +103,7 @@ to CSV, QIF or similar, saving into {workspace}. GTK apps such as GnuCash expose
 their menu bar to accessibility, not their dialogs; inside a dialog use keys (Tab,
 Return, typing a path, cmd+shift+g in file pickers) and check with a screenshot. Then
 write extract.mjs so it can redo the whole thing on its own (import { app } from
-'./locallink.mjs' to drive the same export), wait for the file, and parse it. It must
+'./retronaut.mjs' to drive the same export), wait for the file, and parse it. It must
 still output every posting line with stable source IDs from the app's data.
 `
 
@@ -299,7 +299,7 @@ export async function execute(run: Run): Promise<void> {
     // A fresh temp folder outside the project, deleted when the run ends, so the agent
     // never sees earlier runs' work. realpath because macOS temp paths sit behind the
     // /var -> /private/var symlink.
-    workspace = realpathSync(mkdtempSync(join(tmpdir(), `local-link-${run.id}-`)))
+    workspace = realpathSync(mkdtempSync(join(tmpdir(), `retronaut-${run.id}-`)))
     provideRuntime(workspace)
     run.emit('info', 'Connect requested', `app=${run.app} · data=${dataPath} · run=${run.id}`)
 
@@ -330,7 +330,7 @@ export async function execute(run: Run): Promise<void> {
     for (const attempt of [1, 2]) {
       run.emit('info', attempt === 1 ? 'Extractor agent started' : 'Repair: rerunning the agent with the error', `read-only: ${dataPath}`)
       const ui = uiScope(run, attempt)
-      if (ui) run.emit('ui', 'UI automation enabled', `Local Link's tools on ${ui.app} only`)
+      if (ui) run.emit('ui', 'UI automation enabled', `Retronaut's tools on ${ui.app} only`)
       try {
         await runAgent(run, workspace, dataPath, error, ui)
       } catch (e) {

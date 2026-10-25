@@ -71,7 +71,7 @@ export function utc(date: string): string {
 }
 
 export async function gmailSearch(query: string, max: number, emit: Emit = () => {}): Promise<EmailMessage[]> {
-  const dir = mkdtempSync(join(tmpdir(), 'local-link-gmail-'))
+  const dir = mkdtempSync(join(tmpdir(), 'retronaut-gmail-'))
   try {
     const handler = makePermissionHandler({ scratch: dir, toolFilter: readOnlyConnectorTools }, emit)
     const result = await run(

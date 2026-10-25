@@ -138,7 +138,7 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
             <h2>{request.title}</h2>
             <p className="muted">{request.reason}</p>
             <p className="small muted">
-              Local Link uses Factory's {name || 'account'} connector: you sign in once, and Factory keeps the access token. Nothing is sent or changed without being part of your plan.
+              Retronaut uses Factory's {name || 'account'} connector: you sign in once, and Factory keeps the access token. Nothing is sent or changed without being part of your plan.
             </p>
           </div>
         </div>
@@ -167,7 +167,7 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
           <h2>{request.title}</h2>
           <p className="muted">{request.reason}</p>
           <p className="small muted">
-            Local Link will open it, read its windows and data, and click and type only inside it.
+            Retronaut will open it, read its windows and data, and click and type only inside it.
             {request.data.kind === 'gtk' && ' It mostly uses menus and the keyboard here, since this app shows little to accessibility.'}
           </p>
         </div>

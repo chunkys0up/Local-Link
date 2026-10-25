@@ -5,7 +5,7 @@
  *
  * Coordinates are global screen points, top-left origin, the space CoreGraphics,
  * System Events and screencapture -R all use. Needs Accessibility and Screen
- * Recording for whichever app runs this (Local Link, or the terminal in dev).
+ * Recording for whichever app runs this (Retronaut, or the terminal in dev).
  */
 
 import { execFile } from 'node:child_process'
@@ -64,7 +64,7 @@ function run(argv) { const a = JSON.parse(argv[0]); const out = (() => { ${body}
     const text = String((e as { stderr?: string }).stderr || (e as Error).message)
     if (/assistive access|-25211|-1719|not allowed to send keystrokes|-1743/.test(text)) {
       throw new PermissionError(
-        'macOS has not given Local Link Accessibility / Automation access. Turn it on in System Settings > Privacy & Security > Accessibility, then try again.',
+        'macOS has not given Retronaut Accessibility / Automation access. Turn it on in System Settings > Privacy & Security > Accessibility, then try again.',
       )
     }
     throw new Error(text.replace(/^.*execution error: (Error: )*/s, '').trim().slice(0, 400))
@@ -78,12 +78,12 @@ export interface AppRef {
 
 // ---------- the input guard ----------
 //
-// Local Link drives the real mouse and keyboard, so it must not act while a person is
+// Retronaut drives the real mouse and keyboard, so it must not act while a person is
 // using them: their input would interleave with its own. Before every action it checks
 // how long the hardware has been idle and waits until the person has let go. Input
-// Local Link itself just sent is told apart by time: anything up to ownInputUntil is ours.
+// Retronaut itself just sent is told apart by time: anything up to ownInputUntil is ours.
 
-export const QUIET_MS = 1200 // how long the person must be idle before Local Link acts
+export const QUIET_MS = 1200 // how long the person must be idle before Retronaut acts
 export const MAX_WAIT_MS = 120_000
 const OWN_INPUT_SLACK_MS = 400 // our events can register a little after the call returns
 
@@ -119,7 +119,7 @@ export async function waitForUserIdle(): Promise<void> {
         inputGuard.onWait(true)
       }
       if (Date.now() > until) {
-        throw new Error(`You were using the mouse or keyboard for ${MAX_WAIT_MS / 60000} minutes, so Local Link didn't act. Let go of them and run again.`)
+        throw new Error(`You were using the mouse or keyboard for ${MAX_WAIT_MS / 60000} minutes, so Retronaut didn't act. Let go of them and run again.`)
       }
       await new Promise((r) => setTimeout(r, 300))
     }
@@ -204,7 +204,7 @@ export interface Shot {
 /** Screenshot of the app's front window (or the whole main screen), scaled to maxWidth px. */
 export async function screenshot(opts: { ref?: AppRef; maxWidth?: number } = {}): Promise<Shot> {
   const maxWidth = opts.maxWidth ?? 1280
-  const dir = mkdtempSync(join(tmpdir(), 'local-link-shot-'))
+  const dir = mkdtempSync(join(tmpdir(), 'retronaut-shot-'))
   try {
     const raw = join(dir, 'raw.png')
     const out = join(dir, 'shot.jpg')
@@ -225,7 +225,7 @@ export async function screenshot(opts: { ref?: AppRef; maxWidth?: number } = {})
     return { jpeg: readFileSync(out), width, height, region, window: win }
   } catch (e) {
     if (/could not create image|cannot run without|screen recording/i.test(String((e as Error).message))) {
-      throw new PermissionError('macOS has not given Local Link Screen Recording access. Turn it on in System Settings > Privacy & Security > Screen & System Audio Recording.')
+      throw new PermissionError('macOS has not given Retronaut Screen Recording access. Turn it on in System Settings > Privacy & Security > Screen & System Audio Recording.')
     }
     throw e
   } finally {

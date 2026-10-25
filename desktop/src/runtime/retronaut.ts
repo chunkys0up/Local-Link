@@ -1,7 +1,7 @@
 /**
- * The runtime generated workflow scripts import as ./locallink.mjs.
+ * The runtime generated workflow scripts import as ./retronaut.mjs.
  *
- *   import * as ll from './locallink.mjs'
+ *   import * as ll from './retronaut.mjs'
  *   await ll.workflow(async ({ step, state, log }) => {
  *     const mail = await step('Fetch work orders', () => ll.gmail.search('from:orders@acme.com'))
  *     const gnucash = ll.app('GnuCash')
@@ -21,10 +21,10 @@ import { XMLParser } from 'fast-xml-parser'
 
 import * as mac from '../shared/macos'
 
-const API = process.env.LOCAL_LINK_API ?? 'http://127.0.0.1:8000'
-const OUT = process.env.LOCAL_LINK_OUT ?? process.cwd()
-const STATE_FILE = process.env.LOCAL_LINK_STATE ?? join(process.cwd(), 'state.json')
-const TEST = process.env.LOCAL_LINK_TEST === '1'
+const API = process.env.RETRONAUT_API ?? 'http://127.0.0.1:8000'
+const OUT = process.env.RETRONAUT_OUT ?? process.cwd()
+const STATE_FILE = process.env.RETRONAUT_STATE ?? join(process.cwd(), 'state.json')
+const TEST = process.env.RETRONAUT_TEST === '1'
 
 function report(event: Record<string, unknown>): void {
   process.stdout.write(`@@ll ${JSON.stringify({ ts: Date.now() / 1000, ...event })}\n`)
@@ -96,7 +96,7 @@ export class App {
     return this.ref.app
   }
 
-  /** One UI action, shown on screen as Local Link driving this app. */
+  /** One UI action, shown on screen as Retronaut driving this app. */
   private async onScreen<T>(action: () => Promise<T>, label: string): Promise<T> {
     report({ type: 'ui', state: 'begin', app: this.name, label })
     try {
@@ -283,7 +283,7 @@ export class NeedsReview extends Error {
  * Stop the run for a person to decide, e.g. a later visit for an invoice already posted, a
  * customer the book doesn't have, an email in an unknown format. Use it instead of throwing
  * for business situations; throw for breakages (a missing window, a moved button), which
- * Local Link heals.
+ * Retronaut heals.
  */
 export function needsReview(reason: string): never {
   throw new NeedsReview(reason)

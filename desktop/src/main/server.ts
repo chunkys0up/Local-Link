@@ -3,7 +3,7 @@
  * workflows and jobs. Every route also answers under /api, so the renderer uses the
  * same paths in dev (through vite's proxy) and packaged (served from here).
  *
- * Only Local Link's own pages may call it from a browser: requests with any other
+ * Only Retronaut's own pages may call it from a browser: requests with any other
  * Origin are refused, and POST bodies must be JSON (so a web page can't send a
  * "simple" cross-site form post at it).
  */
@@ -331,7 +331,7 @@ route('DELETE', '/connectors/gmail', async () => {
   return { connected: false }
 })
 
-// Local Link's own Gmail connection when there is one, else Factory's connector.
+// Retronaut's own Gmail connection when there is one, else Factory's connector.
 route('POST', '/connectors/gmail/search', async (req) => {
   const max = req.body.max === undefined ? 25 : Number(req.body.max)
   if (!Number.isInteger(max) || max < 1 || max > 100) throw new HttpError(422, 'max must be 1-100')

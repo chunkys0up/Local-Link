@@ -1,42 +1,71 @@
+/* Retronaut's look: a warm near-black base lit by an orange glow from below, glass
+   surfaces (translucent white, 12px blur, 12px corners), white type in Inter, and
+   orange for what you act on. Everything else reads these tokens. */
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #f9fafb;
-  --surface-hover: #f9fafb;
-  --text: #111827;
-  --muted: #6b7280;
-  --subtle: #9ca3af;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
+  --bg: #1c1c1b;
+  --bg-deep: #161615;
+  --surface: rgba(255, 255, 255, 0.045); /* glass cards */
+  --surface-2: rgba(255, 255, 255, 0.03);
+  --surface-hover: rgba(255, 255, 255, 0.075);
+  --surface-solid: #262625; /* anything that overlaps content: menus, dialogs, sticky headers */
+  --field: rgba(255, 255, 255, 0.06);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-strong: rgba(255, 255, 255, 0.1);
+  --blur: blur(12px);
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-text: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --ring: rgba(37, 99, 235, 0.18);
+  --text: #f7f6f4;
+  --muted: rgba(255, 255, 255, 0.6);
+  --subtle: rgba(255, 255, 255, 0.38);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
 
-  --ok: #059669;
-  --ok-text: #047857;
-  --ok-soft: #ecfdf5;
-  --warn: #d97706;
-  --warn-text: #b45309;
-  --warn-soft: #fffbeb;
-  --bad: #dc2626;
-  --bad-text: #b91c1c;
-  --bad-soft: #fef2f2;
-  --neutral-soft: #f3f4f6;
+  --accent: #ff4608;
+  --accent-hover: #ff5d26;
+  --accent-text: #ff7d36;
+  --accent-soft: rgba(255, 70, 8, 0.14);
+  --ring: rgba(255, 70, 8, 0.32);
+
+  --ok: #34d399;
+  --ok-text: #6ee7b7;
+  --ok-soft: rgba(52, 211, 153, 0.12);
+  --warn: #fbbf24;
+  --warn-text: #fcd34d;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --bad: #f87171;
+  --bad-text: #fca5a5;
+  --bad-soft: rgba(248, 113, 113, 0.12);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+
+  /* The glow: an ellipse rising from the bottom centre, orange fading into the base. */
+  --glow: radial-gradient(
+    ellipse 131% 100% at 50% 100%,
+    #ff4820 0%,
+    #f84720 21%,
+    #e44320 35%,
+    #c73e20 44.5%,
+    #a43820 51.8%,
+    #7d3120 59.6%,
+    #562a20 70.9%,
+    #312420 88.2%,
+    #212120 100%
+  );
+  /* The same light, dimmed, behind pages full of content. */
+  --glow-soft: radial-gradient(ellipse 120% 55% at 50% 100%, rgba(255, 72, 32, 0.16), rgba(255, 72, 32, 0) 70%);
 
   --shadow-sm: none;
   --shadow: none;
-  --radius: 6px;
+  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.35);
+  --radius: 12px;
+  --radius-md: 8px;
   --radius-sm: 4px;
 
-  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  font: 14px/1.5 var(--sans);
+  font: 14px/1.55 var(--sans);
   font-feature-settings: 'cv11', 'ss01';
   color: var(--text);
   background: var(--bg);

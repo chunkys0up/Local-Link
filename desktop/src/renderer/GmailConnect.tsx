@@ -52,7 +52,7 @@ export function GmailConnect({ onConnected, compact = false }: { onConnected: (e
         <button type="button" className="link inline" onClick={() => openExternal(APP_PASSWORDS_URL)}>
           Create one
         </button>{' '}
-        (needs 2-Step Verification). Local Link only reads mail, and keeps the password in your Mac's keychain.
+        (needs 2-Step Verification). Retronaut only reads mail, and keeps the password in your Mac's keychain.
       </p>
       {error && <p className="request-error">{error}</p>}
     </form>

@@ -1,5 +1,5 @@
 /**
- * One droid session in its own folder, with Local Link's permission policy, its events
+ * One droid session in its own folder, with Retronaut's permission policy, its events
  * forwarded to a job. Sessions are multi-turn: the engine sends a follow-up (a checker
  * or test failure) to the same session so the agent keeps what it learned.
  */
@@ -21,7 +21,7 @@ const MAX_NUDGES = 2
 
 const NUDGE = `Your last action was refused by the session policy: {reason}
 
-That doesn't end the task. Take an allowed route (read-only commands, Local Link's tools,
+That doesn't end the task. Take an allowed route (read-only commands, Retronaut's tools,
 or a node script in the working folder) and keep going.`
 
 export interface AuthRequest {

@@ -3,7 +3,7 @@
  *
  * Writes only inside the session's own folder; commands only if droid rates them
  * read-only, or if they run a .mjs/.js script from that folder with node. UI control
- * goes through Local Link's own tools (computer.ts), which check the app scope
+ * goes through Retronaut's own tools (computer.ts), which check the app scope
  * themselves, never through shell osascript/screencapture/cliclick. Connector tools
  * (Gmail, ...) are allowed when the caller's toolFilter says so.
  */
@@ -130,7 +130,7 @@ export function denyReason(confirmation: Mapping, scope: PolicyScope): string | 
     const command = String(confirmation.fullCommand ?? confirmation.command ?? '')
     // Checked before the read-only shortcut, whatever droid rates them.
     if (isUiCommand(command)) {
-      return `drive apps with Local Link's computer tools (screenshot, click, type_text, press_keys, choose_menu), not shell UI commands (tried ${JSON.stringify(command)})`
+      return `drive apps with Retronaut's computer tools (screenshot, click, type_text, press_keys, choose_menu), not shell UI commands (tried ${JSON.stringify(command)})`
     }
     if (confirmation.impactLevel === 'low') return null
     if (runsScratchScripts(command, scratch)) return null

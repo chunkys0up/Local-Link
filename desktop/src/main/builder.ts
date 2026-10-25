@@ -26,7 +26,7 @@ import * as workflows from './workflows'
 const MAX_FIXES = 2
 
 export const RUNTIME_API = `
-## ./locallink.mjs (import * as ll from './locallink.mjs')
+## ./retronaut.mjs (import * as ll from './retronaut.mjs')
 await ll.workflow(async ({ step, state, log, isTest }) => { ...; return { invoices_created: n } })
 step(name, fn, { app })   one action, reported live; pass the app so a failure screenshots it
 ll.needsReview(reason)    stop on purpose for a person to decide (data that's ambiguous, changed after
@@ -48,7 +48,7 @@ const BUILD = `You are building a reusable automation on the user's Mac. They as
 
 "{goal}"
 
-Local Link turns this into a script that runs again and again without you, so work out
+Retronaut turns this into a script that runs again and again without you, so work out
 exactly how to do it, then write that down as code.
 
 ## How to work
@@ -57,7 +57,7 @@ exactly how to do it, then write that down as code.
    file the user named needs no request). For an online account (Gmail, Outlook, ...)
    call request_access with kind "connector", then explore it (Gmail: the gmail_search
    tool; other accounts: their connector tools; read only). Ask for everything you need
-   at once, then end your turn: Local Link resumes you with the user's answers.
+   at once, then end your turn: Retronaut resumes you with the user's answers.
    When something is ambiguous (which of several books or files, which customer an
    email means, a missing rate), ask the user with AskUser rather than guessing or
    stopping. An app may have the user's own data open: confirm it's the right file
@@ -74,7 +74,7 @@ exactly how to do it, then write that down as code.
    don't make the real change: cancel dialogs you open (escape).
 3. Call propose_plan with the steps and how each is done, then end your turn. You are
    resumed with the user's approval or feedback; on feedback, revise and propose again.
-4. Write workflow.mjs in the working folder with ./locallink.mjs (API below):
+4. Write workflow.mjs in the working folder with ./retronaut.mjs (API below):
    - one ll.step per meaningful action, with { app } when it drives an app;
    - idempotent: record each item you handle with state.markDone and skip items
      state.done says were handled, so reruns never create duplicates;
@@ -87,16 +87,16 @@ exactly how to do it, then write that down as code.
    - keep money exact (integer cents), and never invent amounts, customers or accounts:
      if the data doesn't say, throw with a clear message.
    Run it yourself with node if that helps, then finish your turn with a short summary.
-   Local Link then runs it as the test run and tells you the result.
+   Retronaut then runs it as the test run and tells you the result.
 
 ## Rules
 - Working folder: {workspace}. Write files only there. Commands: read-only ones, or
   \`node <script>.mjs\` for scripts in the working folder.
-- Only drive apps the user allowed, never Local Link, a terminal, or other apps.
+- Only drive apps the user allowed, never Retronaut, a terminal, or other apps.
 - Never send, delete or change anything in an online account unless the user asked.
 ${RUNTIME_API}`
 
-const TEST_FAILED = `Local Link's test run of workflow.mjs failed.
+const TEST_FAILED = `Retronaut's test run of workflow.mjs failed.
 
 {failure}
 
@@ -114,7 +114,7 @@ The failure:
 {failure}
 
 workflow.mjs (and the state.json of what's already been handled) are in your working
-folder, with ./locallink.mjs. Work out what changed, for example an app update that
+folder, with ./retronaut.mjs. Work out what changed, for example an app update that
 moved a menu item or button, a renamed window, a different email format, by looking at
 the app now (screenshot, list_menu, ui_tree) and at the data. Then make the smallest fix
 to workflow.mjs that keeps the same behaviour, and finish your turn with what changed
@@ -170,7 +170,7 @@ class Questions {
       const key = q.app.name.toLowerCase()
       this.apps.add(key)
       this.waiting.push(
-        this.job.ask('app', `Let Local Link use ${q.app.name}?`, q.reason, { app: q.app.name, path: q.app.path, kind: q.app.kind }).then((r) => {
+        this.job.ask('app', `Let Retronaut use ${q.app.name}?`, q.reason, { app: q.app.name, path: q.app.path, kind: q.app.kind }).then((r) => {
           this.apps.delete(key)
           if (r.status !== 'approved') return `The user declined access to ${q.app.name}.`
           this.allowed.set(key, { app: q.app.name, bundleId: q.app.bundle_id || undefined, path: q.app.path })
@@ -285,7 +285,7 @@ export function startBuild(goal: string): { workflow: workflows.Workflow; job: J
 }
 
 async function build(wfId: string, job: Job): Promise<void> {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), `local-link-${wfId}-`)))
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), `retronaut-${wfId}-`)))
   const allowed = new Map<string, AllowedApp>()
   const questions = new Questions(job, wfId, allowed)
   const agent = makeAgent('Builder', job, workspace, toolContext(job, allowed, questions), questions)
@@ -419,7 +419,7 @@ async function runAndHeal(wfId: string, job: Job): Promise<void> {
 async function heal(wfId: string, job: Job, outcome: ScriptOutcome): Promise<boolean> {
   const wf = workflows.get(wfId)!
   const dir = workflows.folder(wfId)
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), `local-link-heal-${wfId}-`)))
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), `retronaut-heal-${wfId}-`)))
   const allowed = new Map(wf.apps.map((a) => [a.app.toLowerCase(), a]))
   const agent = makeAgent('Healer', job, workspace, toolContext(job, allowed, null), null)
   try {

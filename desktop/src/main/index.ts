@@ -1,5 +1,5 @@
 /**
- * Local Link's Electron main process: runs the engine (agents, scripts, the HTTP API)
+ * Retronaut's Electron main process: runs the engine (agents, scripts, the HTTP API)
  * and one window for the UI. In dev the window loads vite; packaged, the engine
  * serves the built renderer itself.
  */
@@ -14,7 +14,7 @@ import { serve } from './server'
 import { permissions, prepareEnvironment } from './startup'
 import * as ui from './uiActivity'
 
-const DEV_URL = process.env.LOCAL_LINK_DEV_URL
+const DEV_URL = process.env.RETRONAUT_DEV_URL
 
 const PRIVACY_PANES: Record<string, string> = {
   accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
@@ -41,7 +41,7 @@ let mainWindow: BrowserWindow | null = null
 function attend(workflowId: string): void {
   const win = mainWindow
   if (!win || win.isDestroyed()) return
-  // Never while Local Link is driving another app (the two would fight over focus):
+  // Never while Retronaut is driving another app (the two would fight over focus):
   // wait for that to finish, then come forward.
   if (ui.current().active) {
     const off = ui.onChange((state) => {
@@ -63,9 +63,9 @@ function createWindow(): void {
     height: 860,
     minWidth: 720,
     minHeight: 560,
-    title: 'Local Link',
+    title: 'Retronaut',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1c1c1b',
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },
   })
   // Links open in the browser, not in the app window.

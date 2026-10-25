@@ -35,7 +35,7 @@ export function Pip() {
     <div className="pip">
       <div className="pip-title">
         <span className="brand-dot" aria-hidden="true" />
-        <span className="pip-name">{job.title || 'Local Link'}</span>
+        <span className="pip-name">{job.title || 'Retronaut'}</span>
         <span className="pip-kind">{job.kind === 'build' ? 'Building' : 'Running'}</span>
       </div>
       <BuildCard job={job} compact />

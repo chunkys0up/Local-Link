@@ -5,17 +5,17 @@ import * as ui from '../src/main/uiActivity'
 
 const NOW = 1_000_000
 
-test('a person who just moved the mouse makes Local Link wait', () => {
+test('a person who just moved the mouse makes Retronaut wait', () => {
   expect(userBusy(0.3, NOW, 0)).toBe(true)
   expect(userBusy((QUIET_MS - 1) / 1000, NOW, 0)).toBe(true)
 })
 
-test('once they have been still for the quiet period, Local Link acts', () => {
+test('once they have been still for the quiet period, Retronaut acts', () => {
   expect(userBusy(QUIET_MS / 1000, NOW, 0)).toBe(false)
   expect(userBusy(30, NOW, 0)).toBe(false)
 })
 
-test("Local Link's own clicks and keys don't count as the person", () => {
+test("Retronaut's own clicks and keys don't count as the person", () => {
   // The latest input was 0.1s ago, inside the window we marked as ours.
   expect(userBusy(0.1, NOW, NOW + 300)).toBe(false)
   // Input after our last action is the person's.

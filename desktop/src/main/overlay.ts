@@ -1,8 +1,8 @@
 /**
- * What's on screen while Local Link works, outside its own window:
+ * What's on screen while Retronaut works, outside its own window:
  *
  * - The frame: a border around the display. Dull while a build or run is going (so you
- *   know automation is about), bright with a pill naming the action while Local Link is
+ *   know automation is about), bright with a pill naming the action while Retronaut is
  *   actually driving an app. Only the pill's Stop button catches clicks.
  * - The picture-in-picture: the live build card (phase, latest screenshot, recent steps)
  *   in the top-right corner, for the whole build or run. Clicks pass through it.
@@ -22,19 +22,19 @@ const PIP = { width: 380, height: 330, margin: 14 }
 const POLL_MS = 1000
 
 const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
-  :root { --accent: #2563eb; --glow: rgba(37, 99, 235, 0.45); }
-  body.paused { --accent: #d97706; --glow: rgba(217, 119, 6, 0.45); }
+  :root { --accent: #ff4608; --glow: rgba(255, 70, 8, 0.45); }
+  body.paused { --accent: #fbbf24; --glow: rgba(251, 191, 36, 0.4); }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
-    font: 13px/1.3 -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; -webkit-user-select: none; cursor: default; }
+    font: 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-user-select: none; cursor: default; }
   .frame { position: fixed; inset: 0; border-radius: 12px; opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
   /* A build or run is going: a quiet reminder. */
-  body.session .frame { opacity: 1; border: 3px solid rgba(100, 116, 139, 0.45); box-shadow: none; }
+  body.session .frame { opacity: 1; border: 3px solid rgba(255, 125, 54, 0.4); box-shadow: none; }
   /* Driving an app right now: hands off. */
   body.on .frame { opacity: 1; border: 6px solid var(--accent); box-shadow: inset 0 0 36px 8px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
     display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 999px;
-    background: rgba(17, 24, 39, 0.92); color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px var(--accent);
+    background: rgba(28, 28, 27, 0.94); color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px var(--accent);
     opacity: 0; transition: opacity .25s, transform .25s; white-space: nowrap; pointer-events: none; }
   body.on .pill { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--glow); animation: pulse 1.4s infinite; }
@@ -51,9 +51,9 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
 <script>
   const pill = document.getElementById('pill'), text = document.getElementById('text'), stop = document.getElementById('stop')
   // The window ignores the mouse except over the pill, so clicks reach the app beneath.
-  pill.addEventListener('mouseenter', () => window.localLink.overlay.hover(true))
-  pill.addEventListener('mouseleave', () => window.localLink.overlay.hover(false))
-  stop.addEventListener('click', () => window.localLink.overlay.stop())
+  pill.addEventListener('mouseenter', () => window.retronaut.overlay.hover(true))
+  pill.addEventListener('mouseleave', () => window.retronaut.overlay.hover(false))
+  stop.addEventListener('click', () => window.retronaut.overlay.stop())
   window.render = (s) => {
     document.body.classList.toggle('session', s.session)
     document.body.classList.toggle('on', s.active)
@@ -63,7 +63,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
       ? 'Paused <span class="muted">· waiting for you to let go of the mouse and keyboard</span>'
       : '<b></b> <span class="action"></span> <span class="muted">· hands off</span>'
     if (!s.paused) {
-      text.querySelector('b').textContent = s.action ? (s.app || 'App') + ':' : 'Local Link is using ' + (s.app || 'an app')
+      text.querySelector('b').textContent = s.action ? (s.app || 'App') + ':' : 'Retronaut is using ' + (s.app || 'an app')
       text.querySelector('.action').textContent = s.action || ''
     }
     stop.hidden = !s.jobId
@@ -71,7 +71,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
 </script></body></html>`
 
 const PANEL = {
-  type: 'panel', // an NSPanel: showing it never activates Local Link
+  type: 'panel', // an NSPanel: showing it never activates Retronaut
   frame: false,
   transparent: true,
   hasShadow: false,
@@ -94,7 +94,7 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 function floating(win: BrowserWindow): BrowserWindow {
   win.setAlwaysOnTop(true, 'screen-saver')
-  // skipTransformProcessType: without it, macOS briefly turns Local Link into a background
+  // skipTransformProcessType: without it, macOS briefly turns Retronaut into a background
   // app, which hides its windows and Dock icon. The cost: nothing over full-screen spaces.
   win.setVisibleOnAllWorkspaces(true, { skipTransformProcessType: true })
   win.setIgnoreMouseEvents(true, { forward: true })

@@ -1,5 +1,5 @@
 /**
- * Local Link's in-process MCP tools for agent sessions: seeing and driving the apps the
+ * Retronaut's in-process MCP tools for agent sessions: seeing and driving the apps the
  * user allowed (screenshot, ui_tree, menus, click, type_text, press_keys), and asking
  * the user for things (request_access, propose_plan). Every tool checks the app scope
  * itself, so the permission policy can allow the whole server.
@@ -14,7 +14,7 @@ import * as gmail from './gmail'
 import * as ui from './uiActivity'
 import type { Emit } from './policy'
 
-export const SERVER = 'locallink'
+export const SERVER = 'retronaut'
 
 export interface AllowedApp extends mac.AppRef {
   path: string
@@ -58,7 +58,7 @@ export interface ToolContext {
   jobId?: string
 }
 
-export const END_TURN = 'End your turn now with one short line; Local Link resumes you with their answer.'
+export const END_TURN = 'End your turn now with one short line; Retronaut resumes you with their answer.'
 
 type Result = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean }
 
@@ -183,7 +183,7 @@ export function computerServer(ctx: ToolContext): SdkMcpServer {
       { query: z.string(), max: z.number().int().min(1).max(50).optional() },
       guarded(async ({ query, max }) => {
         if (!gmail.connectedAccount()) {
-          return fail('Local Link has no direct Gmail connection. If gmail__ connector tools are in your deferred tools, use those (read only); otherwise call request_access with kind "connector" and name "gmail".')
+          return fail('Retronaut has no direct Gmail connection. If gmail__ connector tools are in your deferred tools, use those (read only); otherwise call request_access with kind "connector" and name "gmail".')
         }
         const messages = await gmail.search(query, max ?? 10)
         ctx.emit('connector', `Searched Gmail`, `${query} · ${messages.length} found`)

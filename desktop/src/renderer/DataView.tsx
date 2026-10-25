@@ -104,7 +104,7 @@ const ALERT: Record<'needs_human' | 'error' | 'lost', { title: string; body: str
   },
   lost: {
     title: 'Run lost',
-    body: 'The dashboard lost track of this run. Nothing new was loaded. Restart Local Link if needed, then press Connect again.',
+    body: 'The dashboard lost track of this run. Nothing new was loaded. Restart Retronaut if needed, then press Connect again.',
   },
 }
 
@@ -695,12 +695,12 @@ export function DataView() {
         if (next.status !== 'running') await loadLedgers(next.ledger_id)
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
-          markLost('The engine no longer knows this run (Local Link was probably restarted).')
+          markLost('The engine no longer knows this run (Retronaut was probably restarted).')
           return
         }
         failures += 1
         if (failures >= MAX_POLL_FAILURES) {
-          markLost(`Couldn't reach the engine ${failures} times in a row. Is Local Link's engine running?`)
+          markLost(`Couldn't reach the engine ${failures} times in a row. Is Retronaut's engine running?`)
         } else {
           setRequestError(`Can't reach the engine, retrying… (${(e as Error).message})`)
         }
@@ -839,7 +839,7 @@ export function DataView() {
           <div className="actions">
             <label
               className="toggle small"
-              title="Let the agent drive the app with Local Link's computer tools (menus, keys, screenshots) from the start. Otherwise it only does this on the repair attempt."
+              title="Let the agent drive the app with Retronaut's computer tools (menus, keys, screenshots) from the start. Otherwise it only does this on the repair attempt."
             >
               <input type="checkbox" checked={allowUi} disabled={running} onChange={(e) => setAllowUi(e.target.checked)} />
               Allow UI automation

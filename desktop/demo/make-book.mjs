@@ -15,7 +15,7 @@ const out = process.argv[2] ?? join(homedir(), 'Documents', 'Local Link Demo', '
 // "ISO4217"), so a fresh book looks the same before and after GnuCash has saved it.
 
 // Stable GUIDs, so a regenerated book has the same accounts and customers.
-const guid = (name) => createHash('md5').update(`local-link-demo/${name}`).digest('hex')
+const guid = (name) => createHash('md5').update(`retronaut-demo/${name}`).digest('hex')
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const USD = '<cmdty:space>CURRENCY</cmdty:space>\n    <cmdty:id>USD</cmdty:id>'
 

@@ -9,13 +9,13 @@ import { Job } from '../src/main/jobs'
 import * as ui from '../src/main/uiActivity'
 
 beforeAll(async () => {
-  const out = join(mkdtempSync(join(tmpdir(), 'll-runtime-')), 'locallink.mjs')
-  await build({ entryPoints: [join(__dirname, '..', 'src', 'runtime', 'locallink.ts')], outfile: out, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
-  process.env.LOCAL_LINK_RUNTIME = out
+  const out = join(mkdtempSync(join(tmpdir(), 'll-runtime-')), 'retronaut.mjs')
+  await build({ entryPoints: [join(__dirname, '..', 'src', 'runtime', 'retronaut.ts')], outfile: out, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
+  process.env.RETRONAUT_RUNTIME = out
 })
 
 const SCRIPT = `
-import * as ll from './locallink.mjs'
+import * as ll from './retronaut.mjs'
 await ll.workflow(async ({ step, state }) => {
   const orders = ['WO-1', 'WO-2']
   let made = 0
@@ -98,4 +98,17 @@ process.exit(3)`,
   await new Promise((r) => setTimeout(r, ui.HIDE_AFTER_MS + 100))
   expect(ui.current().active).toBe(false)
   off()
+})
+
+test('scripts written before the rename still run: ./locallink.mjs and LOCAL_LINK_ settings', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'll-wf-'))
+  writeFileSync(
+    join(dir, 'workflow.mjs'),
+    `import * as ll from './locallink.mjs'
+await ll.workflow(async () => ({ old_name_test: process.env.LOCAL_LINK_TEST, new_name_test: process.env.RETRONAUT_TEST }))`,
+  )
+  const job = new Job('run', 'wf_test')
+  const outcome = await runScript(job, { dir, script: 'workflow.mjs', out: join(dir, 'out'), state: join(dir, 'state.json'), test: true })
+  expect(outcome.ok).toBe(true)
+  expect(outcome.summary).toEqual({ old_name_test: '1', new_name_test: '1' })
 })

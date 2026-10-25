@@ -119,7 +119,7 @@ export function markInterrupted(): number {
   for (const wf of stuck) {
     update(wf.id, (w) => {
       w.status = 'failed'
-      w.note = 'Interrupted: Local Link was restarted during the build. Delete it and build again.'
+      w.note = 'Interrupted: Retronaut was restarted during the build. Delete it and build again.'
     })
   }
   return stuck.length

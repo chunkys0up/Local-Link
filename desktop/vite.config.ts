@@ -14,7 +14,7 @@ export default defineConfig({
     proxy: {
       // Anchored, so the renderer's own api.ts isn't proxied.
       '^/api/': {
-        target: `http://127.0.0.1:${process.env.LOCAL_LINK_PORT ?? 8000}`,
+        target: `http://127.0.0.1:${process.env.RETRONAUT_PORT ?? 8000}`,
         rewrite: (path: string) => path.replace(/^\/api/, ''),
       },
     },

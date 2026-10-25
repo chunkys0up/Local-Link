@@ -7,8 +7,8 @@ const run = (cmd, args, env = {}) =>
   spawn(cmd, args, { stdio: 'inherit', env: { ...process.env, ...env } })
 
 const children = [run('npx', ['vite']), run('node', ['scripts/build.mjs', '--watch'])]
-while (!existsSync('dist/main.cjs') || !existsSync('dist/locallink.mjs')) await wait(200)
-const electron = run('npx', ['electron', '.'], { LOCAL_LINK_DEV_URL: 'http://localhost:5317' })
+while (!existsSync('dist/main.cjs') || !existsSync('dist/retronaut.mjs')) await wait(200)
+const electron = run('npx', ['electron', '.'], { RETRONAUT_DEV_URL: 'http://localhost:5317' })
 children.push(electron)
 
 const stop = () => children.forEach((c) => c.kill())

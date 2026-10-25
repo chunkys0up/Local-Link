@@ -33,9 +33,16 @@ export function nodeCommand(): { command: string; env: Record<string, string> } 
     : { command: process.execPath, env: {} }
 }
 
-/** Put the current runtime next to a script, so it imports ./locallink.mjs. */
+/** Put the current runtime next to a script, so it imports ./retronaut.mjs. */
 export function provideRuntime(dir: string): void {
+  copyFileSync(runtimeFile(), join(dir, 'retronaut.mjs'))
+  // Scripts written before the rename import it as ./locallink.mjs.
   copyFileSync(runtimeFile(), join(dir, 'locallink.mjs'))
+}
+
+/** The runtime's settings, under the old LOCAL_LINK_ names too for scripts written before the rename. */
+function runtimeEnv(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).flatMap(([k, v]) => [[`RETRONAUT_${k}`, v], [`LOCAL_LINK_${k}`, v]]))
 }
 
 export async function runScript(
@@ -49,11 +56,7 @@ export async function runScript(
     env: {
       ...process.env,
       ...node.env,
-      LOCAL_LINK_API: API_BASE,
-      LOCAL_LINK_OUT: opts.out,
-      LOCAL_LINK_STATE: opts.state,
-      LOCAL_LINK_TEST: opts.test ? '1' : '0',
-      LOCAL_LINK_JOB: job.id,
+      ...runtimeEnv({ API: API_BASE, OUT: opts.out, STATE: opts.state, TEST: opts.test ? '1' : '0', JOB: job.id }),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

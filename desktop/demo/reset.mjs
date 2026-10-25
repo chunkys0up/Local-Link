@@ -5,17 +5,17 @@
 //   npm run demo:reset
 //
 // Refuses while GnuCash has the book open (it would save its old copy over the new one)
-// or while Local Link is building or running something.
+// or while Retronaut is building or running something.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const DEMO_DIR = process.env.LOCAL_LINK_DEMO_DIR ?? join(homedir(), 'Documents', 'Local Link Demo')
+const DEMO_DIR = process.env.RETRONAUT_DEMO_DIR ?? join(homedir(), 'Documents', 'Local Link Demo')
 const BOOK = join(DEMO_DIR, 'northwind.gnucash')
-const DATA_DIR = process.env.LOCAL_LINK_DATA ?? join(homedir(), 'Library', 'Application Support', 'Local Link')
-const ENGINE = `http://127.0.0.1:${process.env.LOCAL_LINK_PORT ?? 8000}`
+const DATA_DIR = process.env.RETRONAUT_DATA ?? join(homedir(), 'Library', 'Application Support', 'Retronaut')
+const ENGINE = `http://127.0.0.1:${process.env.RETRONAUT_PORT ?? 8000}`
 
 function stop(message) {
   console.error(`Not reset: ${message}`)
@@ -40,9 +40,9 @@ if (existsSync(`${BOOK}.LCK`)) {
 // 2. Nothing may be building or running.
 try {
   const live = await (await fetch(`${ENGINE}/api/live`, { signal: AbortSignal.timeout(2000) })).json()
-  if (live) stop(`Local Link is ${live.kind === 'build' ? 'building' : 'running'} "${live.title}". Let it finish or press Stop, then run this again.`)
+  if (live) stop(`Retronaut is ${live.kind === 'build' ? 'building' : 'running'} "${live.title}". Let it finish or press Stop, then run this again.`)
 } catch {
-  // Local Link isn't running; nothing can be in progress
+  // Retronaut isn't running; nothing can be in progress
 }
 
 // 3. A fresh book, and none of GnuCash's backups and logs of the old one.

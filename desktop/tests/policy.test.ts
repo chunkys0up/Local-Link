@@ -3,10 +3,10 @@ import { expect, test } from 'vitest'
 import { readOnlyConnectorTools } from '../src/main/connectors'
 import { denyReason, makePermissionHandler, type PolicyScope } from '../src/main/policy'
 
-const SCRATCH = '/tmp/local-link-scratch'
+const SCRATCH = '/tmp/retronaut-scratch'
 const DATA = '/Users/someone/books/book.gnucash'
 const OPTIONS = [{ value: 'proceed_once' }, { value: 'proceed_always' }, { value: 'cancel' }]
-const scope: PolicyScope = { scratch: SCRATCH, servers: ['locallink'], toolFilter: readOnlyConnectorTools }
+const scope: PolicyScope = { scratch: SCRATCH, servers: ['retronaut'], toolFilter: readOnlyConnectorTools }
 
 const execute = (command: string, impact = 'medium') => ({ type: 'exec', fullCommand: command, impactLevel: impact })
 const patch = (path: string) => ({ type: 'apply_patch', filePath: path, patchContent: `*** Begin Patch\n*** Add File: ${path}\n+hi\n*** End Patch` })
@@ -68,7 +68,7 @@ test('shell UI commands are refused, even when droid rates them low', () => {
 })
 
 test('our own MCP tools are allowed; connector tools only when they read', () => {
-  expect(denyReason({ type: 'mcp_tool', toolName: 'click', serverName: 'locallink' }, scope)).toBeNull()
+  expect(denyReason({ type: 'mcp_tool', toolName: 'click', serverName: 'retronaut' }, scope)).toBeNull()
   expect(denyReason({ type: 'mcp_tool', toolName: 'gmail_search_messages', serverName: 'gmail' }, scope)).toBeNull()
   expect(denyReason({ type: 'mcp_tool', toolName: 'read_thread', serverName: 'gmail' }, scope)).toBeNull()
   expect(denyReason({ type: 'mcp_tool', toolName: 'gmail_send_message', serverName: 'gmail' }, scope)).toMatch(/only reading/)

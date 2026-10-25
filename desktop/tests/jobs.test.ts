@@ -4,7 +4,7 @@ import { Job } from '../src/main/jobs'
 
 test('a question waits for the answer and the job waits with it', async () => {
   const job = new Job('build', 'wf_test')
-  const answer = job.ask('app', 'Let Local Link use GnuCash?', 'to create invoices', { app: 'GnuCash' })
+  const answer = job.ask('app', 'Let Retronaut use GnuCash?', 'to create invoices', { app: 'GnuCash' })
   expect(job.status).toBe('waiting')
   expect(job.snapshot().requests.map((r) => r.status)).toEqual(['pending'])
 

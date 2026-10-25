@@ -1,5 +1,5 @@
 /**
- * Whether Local Link is driving an app's UI right now, for the on-screen frame. UI
+ * Whether Retronaut is driving an app's UI right now, for the on-screen frame. UI
  * actions (the agent's tools in this process, workflow scripts through their reports)
  * begin and end here; the frame shows from the first begin and hides a moment after
  * the last end, so a burst of actions reads as one stretch of "hands off".

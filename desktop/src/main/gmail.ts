@@ -1,5 +1,5 @@
 /**
- * Local Link's own Gmail connection: IMAP with a Google app password, kept in the
+ * Retronaut's own Gmail connection: IMAP with a Google app password, kept in the
  * keychain. Unlike Factory's connector, it needs no agent: scripts get exact message
  * bodies straight from Gmail, searched with Gmail's own query syntax (X-GM-RAW).
  */
@@ -84,7 +84,7 @@ const address = (value: unknown): string => {
 export async function search(query: string, max = 25): Promise<EmailMessage[]> {
   const email = connectedAccount()
   const password = email ? await getSecret(`gmail:${email}`) : null
-  if (!email || !password) throw new Error('Gmail is not connected to Local Link')
+  if (!email || !password) throw new Error('Gmail is not connected to Retronaut')
   const imap = client(email, password)
   await imap.connect()
   try {

@@ -10,14 +10,15 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { connectedAccount } from './gmail'
-import { DATA_DIR } from './paths'
+import { DATA_DIR, migrateDataDir } from './paths'
 
 const EXTRA_PATH = [join(homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
 
-/** .env files tried in order: the repo root (dev), then Local Link's data folder. */
+/** .env files tried in order: the repo root (dev), then Retronaut's data folder. */
 export const ENV_FILES = [resolve(__dirname, '..', '..', '.env'), join(DATA_DIR, '.env')]
 
 export function prepareEnvironment(): void {
+  migrateDataDir()
   const parts = (process.env.PATH ?? '/usr/bin:/bin').split(':')
   process.env.PATH = [...EXTRA_PATH.filter((p) => !parts.includes(p)), ...parts].join(':')
   for (const file of ENV_FILES) {

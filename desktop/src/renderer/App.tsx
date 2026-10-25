@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import './Shell.css'
 
-import { api, onAttention, type Workflow } from './api'
+import { api, onAttention, type Health, type Workflow } from './api'
+import { GmailConnect } from './GmailConnect'
 import { DataView } from './DataView'
 import { Home } from './Home'
 import { WorkflowView } from './WorkflowView'
@@ -25,10 +26,58 @@ function Mark() {
   )
 }
 
+/** Online accounts: Gmail directly, or through Factory's connector. */
+function Accounts({ open, gmail, onClose, onChanged }: { open: boolean; gmail: string | null; onClose: () => void; onChanged: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const d = dialog.current
+    if (!d) return
+    if (open && !d.open) d.showModal()
+    if (!open && d.open) d.close()
+  }, [open])
+
+  return (
+    <dialog ref={dialog} className="accounts" onClose={onClose} onClick={(e) => e.target === dialog.current && onClose()}>
+      <div className="accounts-body">
+        <div className="accounts-head">
+          <div>
+            <h2>Accounts</h2>
+            <p className="muted small">
+              Gmail connected in Factory (Settings › Connectors) works as is. Connecting it here as well makes searches direct and faster, with no agent reading your mail.
+            </p>
+          </div>
+          <button type="button" className="secondary small-button" onClick={onClose}>
+            Done
+          </button>
+        </div>
+        {gmail ? (
+          <p className="small">
+            <span className="text-ok">Gmail connected</span> <span className="muted">· {gmail}</span>{' '}
+            <button type="button" className="link inline" onClick={() => api('/connectors/gmail', undefined, 'DELETE').then(onChanged)}>
+              Disconnect
+            </button>
+          </p>
+        ) : (
+          <GmailConnect onConnected={onChanged} />
+        )}
+      </div>
+    </dialog>
+  )
+}
+
 export default function App() {
   const [view, setView] = useState<View>({ name: 'home' })
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [offline, setOffline] = useState(false)
+  const [gmail, setGmail] = useState<string | null>(null)
+  const [accountsOpen, setAccountsOpen] = useState(false)
+
+  const loadAccounts = useCallback(() => {
+    api<Health>('/health')
+      .then((h) => setGmail(h.gmail))
+      .catch(() => {})
+  }, [])
+  useEffect(loadAccounts, [loadAccounts])
 
   const loadWorkflows = useCallback(async () => {
     try {
@@ -69,10 +118,12 @@ export default function App() {
           <span className="brand-mark">
             <Mark />
           </span>
-          <span className="side-name">Local Link</span>
+          <span className="side-name">
+            <span className="retro">Retro</span>naut
+          </span>
         </div>
         <button type="button" className={`side-new${view.name === 'home' ? ' active' : ''}`} onClick={() => setView({ name: 'home' })}>
-          <span aria-hidden="true">+</span> New workflow
+          <span className="plus" aria-hidden="true">+</span> New workflow
         </button>
 
         <nav className="side-section" aria-label="Workflows">
@@ -95,7 +146,12 @@ export default function App() {
           </ul>
         </nav>
 
-        <nav className="side-section side-bottom" aria-label="Data">
+        <nav className="side-section side-bottom" aria-label="Data and accounts">
+          <button type="button" className="side-item" onClick={() => setAccountsOpen(true)}>
+            <span className="side-glyph" aria-hidden="true">@</span>
+            <span className="side-item-name">Accounts</span>
+            <span className="side-item-meta">{gmail ? 'Gmail' : 'Factory'}</span>
+          </button>
           <button type="button" className={`side-item${view.name === 'data' ? ' active' : ''}`} onClick={() => setView({ name: 'data' })}>
             <span className="side-glyph" aria-hidden="true">≡</span>
             <span className="side-item-name">Data &amp; read APIs</span>
@@ -104,7 +160,7 @@ export default function App() {
         </nav>
       </aside>
 
-      <main className="main">
+      <main className={`main${view.name === 'home' ? ' main-home' : ''}`}>
         <div className="drag" aria-hidden="true" />
         {view.name === 'home' && <Home onStart={start} />}
         {view.name === 'workflow' && (
@@ -120,6 +176,13 @@ export default function App() {
         )}
         {view.name === 'data' && <DataView />}
       </main>
+
+      <Accounts
+        open={accountsOpen}
+        gmail={gmail}
+        onClose={() => setAccountsOpen(false)}
+        onChanged={loadAccounts}
+      />
     </div>
   )
 }
