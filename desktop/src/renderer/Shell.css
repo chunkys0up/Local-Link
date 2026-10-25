@@ -48,6 +48,7 @@
 }
 .side-name .retro {
   color: var(--accent-text);
+  font-weight: 300;
 }
 button.side-new {
   justify-content: flex-start;
