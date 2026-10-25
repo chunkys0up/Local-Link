@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('retronaut', {
     hover: (over: boolean) => ipcRenderer.send('overlay-hover', over),
     stop: () => ipcRenderer.send('overlay-stop'),
   },
+  /** The pointer is over the picture-in-picture (it fades away) or has left it. */
+  pipHover: (over: boolean) => ipcRenderer.send('pip-hover', over),
 })

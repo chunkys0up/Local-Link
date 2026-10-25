@@ -64,6 +64,17 @@ export function jobTitle(job: JobSnapshot): string {
   return job.events.some((e) => e.label === 'Healing') ? 'Healing…' : 'Running…'
 }
 
+/**
+ * "Step 3/6": a build's phase, or the script step a run is on, out of what the last good
+ * run took (just "Step 3" until there's been one).
+ */
+export function stepProgress(job: JobSnapshot, expected: number | null): string | null {
+  if (job.kind === 'build') return `Step ${buildPhase(job) + 1}/${BUILD_PHASES.length}`
+  const at = job.events.reduce((most, e) => Math.max(most, Number(/^Step (\d+):/.exec(e.label)?.[1] ?? 0)), 0)
+  if (!at) return null
+  return expected ? `Step ${at}/${Math.max(at, expected)}` : `Step ${at}`
+}
+
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`

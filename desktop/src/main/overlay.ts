@@ -19,7 +19,7 @@ import * as mac from '../shared/macos'
 import { JOBS, liveJob } from './jobs'
 import * as ui from './uiActivity'
 
-const PIP = { width: 320, height: 170, margin: 14 }
+const PIP = { width: 320, height: 170, margin: 14, opacity: 0.9 }
 // A MacBook's built-in display (notched models) rounds its top corners and keeps the
 // bottom ones square; the frame follows that edge. External displays are square.
 const BUILT_IN_TOP_RADIUS = 10
@@ -115,9 +115,25 @@ function frameWindow(): BrowserWindow {
 
 function pipWindow(): BrowserWindow {
   if (pip && !pip.isDestroyed()) return pip
-  pip = floating(new BrowserWindow({ ...PANEL, width: PIP.width, height: PIP.height }))
+  pip = floating(new BrowserWindow({ ...PANEL, width: PIP.width, height: PIP.height, opacity: PIP.opacity }))
   void pip.loadURL(`${rendererUrl.replace(/#.*$/, '')}#pip`)
   return pip
+}
+
+// The whole window fades (a CSS fade leaves the card's glass behind), from wherever
+// it is now, so moving in and out quickly never jumps.
+let pipFade: ReturnType<typeof setInterval> | null = null
+function fadePip(to: number): void {
+  if (pipFade) clearInterval(pipFade)
+  const win = pip
+  if (!win || win.isDestroyed()) return
+  const from = win.getOpacity()
+  const started = Date.now()
+  pipFade = setInterval(() => {
+    const t = Math.min(1, (Date.now() - started) / 220)
+    if (!win.isDestroyed()) win.setOpacity(from + (to - from) * (1 - (1 - t) ** 2))
+    if (t === 1 && pipFade) clearInterval(pipFade)
+  }, 16)
 }
 
 function place(): void {
@@ -167,7 +183,10 @@ function render(): void {
     hideTimer = setTimeout(() => w.hide(), 350) // let the fade finish
   }
   const p = pipWindow()
-  if (session && !p.isVisible()) p.showInactive()
+  if (session && !p.isVisible()) {
+    p.setOpacity(PIP.opacity)
+    p.showInactive()
+  }
   if (!session && p.isVisible()) p.hide()
 }
 
@@ -176,6 +195,7 @@ export function installOverlay(url: string): void {
   ipcMain.on('overlay-hover', (_event, over: boolean) => {
     frame?.setIgnoreMouseEvents(!over, { forward: true })
   })
+  ipcMain.on('pip-hover', (_event, over: boolean) => fadePip(over ? 0 : PIP.opacity))
   ipcMain.on('overlay-stop', () => {
     const jobId = ui.current().jobId ?? liveJob()?.id
     if (jobId) void JOBS.get(jobId)?.stop()
