@@ -12,6 +12,7 @@ import discover
 import ledger
 import pipeline
 import query
+import writeback
 
 app = FastAPI(title="Local Link runner")
 _tasks: set[asyncio.Task] = set()
@@ -173,6 +174,78 @@ def post_sql(ledger_id: str, body: SqlBody) -> dict:
         return query.run_sql(_db(ledger_id), body.query, body.limit)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+class SplitBody(BaseModel):
+    account: str = Field(min_length=1)  # full path, e.g. Expenses:Dining
+    amount: Decimal = Field(gt=0, decimal_places=2)
+    side: Literal["debit", "credit"]
+    memo: str = ""
+
+
+class TxnBody(BaseModel):
+    date: str = Field(pattern=DATE)
+    description: str = Field(min_length=1)
+    num: str = ""
+    splits: list[SplitBody] = Field(min_length=2)
+
+
+class WriteBody(BaseModel):
+    transactions: list[TxnBody] = Field(min_length=1, max_length=500)
+    allow_ui: bool = False
+
+
+def _start(coro) -> None:
+    task = asyncio.create_task(coro)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+
+
+@app.post("/ledgers/{ledger_id}/writes", status_code=202)
+def request_write(ledger_id: str, body: WriteBody) -> dict:
+    """Add transactions to this ledger's source data. Nothing is written yet: the agent
+    builds (or reuses) a writer and it's proven on a copy. Poll GET /writes/{id} until
+    status is ready (then POST /writes/{id}/apply), no_method or needs_human."""
+    with ledger.connect(_db(ledger_id)) as conn:
+        source = conn.execute("select app, data_path from ledger_source").fetchone()
+    if source is None:
+        raise HTTPException(404, "this ledger has no recorded source")
+    txns = [t.model_dump(mode="json") for t in body.transactions]
+    for t in txns:
+        debits = sum(Decimal(s["amount"]) for s in t["splits"] if s["side"] == "debit")
+        credits = sum(Decimal(s["amount"]) for s in t["splits"] if s["side"] == "credit")
+        if debits != credits:
+            raise HTTPException(400, f"{t['date']} {t['description']}: debits {debits} != credits {credits}")
+    write = writeback.new_write(ledger_id, source["app"], source["data_path"], txns, body.allow_ui)
+    _start(writeback.plan(write))
+    return {"write_id": write.id}
+
+
+@app.get("/writes/{write_id}")
+def get_write(write_id: str) -> dict:
+    write = writeback.WRITES.get(write_id)
+    if write is None:
+        raise HTTPException(404, f"no write {write_id!r}")
+    return write.as_dict()
+
+
+@app.post("/writes/{write_id}/apply")
+async def apply_write(write_id: str) -> dict:
+    """Write a proven write to the real data: backup, write, re-extract to check only the
+    new rows appeared (else restore the backup), then reload the ledger."""
+    if pipeline.any_running():
+        raise HTTPException(409, "a run is in progress; wait for it to finish")
+    try:
+        write = await asyncio.to_thread(writeback.apply, write_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except writeback.WriteRefused as e:
+        raise HTTPException(409, str(e)) from e
+    if write.status == "applied":
+        run = pipeline.new_run(write.app, write.data_path)
+        write.run_id = run.id
+        _start(pipeline.execute(run))
+    return write.as_dict()
 
 
 @app.post("/reset")
