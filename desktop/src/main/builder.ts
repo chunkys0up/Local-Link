@@ -270,6 +270,8 @@ function makeAgent(name: string, job: Job, workspace: string, ctx: ReturnType<ty
       void job.ask('connector', `Sign in to ${serverName}`, message, { connector: serverName, url: authUrl })
     },
     done: () => existsSync(join(workspace, workflows.SCRIPT)),
+    gate: job.whenRunning,
+    paused: () => job.paused,
   })
   job.onStop(() => agent.close())
   return agent
@@ -302,6 +304,7 @@ async function build(wfId: string, job: Job): Promise<void> {
       await converse(agent, questions, 'workflow.mjs is not in the working folder yet. Finish the plan and write it.')
     }
     for (let attempt = 0; attempt <= MAX_FIXES; attempt++) {
+      await job.whenRunning() // a test run drives the apps; not while paused
       if (job.stopped) throw new Error('stopped')
       if (!existsSync(join(workspace, workflows.SCRIPT))) break
       job.emit('info', attempt === 0 ? 'Test run' : `Test run ${attempt + 1}`, 'running workflow.mjs for real')

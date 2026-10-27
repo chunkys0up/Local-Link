@@ -46,6 +46,9 @@ export class Job {
   private waiters = new Map<string, (r: UserRequest) => void>()
   private stoppers: (() => unknown)[] = []
   private wasStopped = false
+  /** Paused by the user: the agent holds its next action until resumed. Builds only. */
+  paused = false
+  private resumers: (() => void)[] = []
 
   constructor(
     readonly kind: JobKind,
@@ -105,10 +108,29 @@ export class Job {
     return this.wasStopped
   }
 
+  /** The user pressed Pause: whatever the agent is doing finishes, then it waits. */
+  pause(): void {
+    if (this.finished !== null || this.paused || this.kind !== 'build') return
+    this.paused = true
+    this.emit('info', 'Paused', 'the builder waits before its next action until you resume')
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    if (this.finished === null) this.emit('info', 'Resumed', 'the builder carries on')
+    for (const go of this.resumers.splice(0)) go()
+  }
+
+  /** Resolves at once, or when the job is resumed (or stopped). */
+  whenRunning = (): Promise<void> => (this.paused ? new Promise((go) => this.resumers.push(go)) : Promise.resolve())
+
   /** The user pressed Stop: end everything the job started; nothing else is done. */
   async stop(): Promise<void> {
     if (this.finished !== null) return
     this.wasStopped = true
+    this.paused = false
+    for (const go of this.resumers.splice(0)) go()
     this.emit('fail', 'Stopped', `you stopped this ${this.kind === 'build' ? 'build' : 'run'}`)
     this.finish('failed', { error: 'Stopped by you' })
     for (const fn of this.stoppers) {
@@ -134,6 +156,7 @@ export class Job {
       kind: this.kind,
       workflow_id: this.workflowId,
       status: this.status,
+      paused: this.paused,
       started: this.started,
       finished: this.finished,
       result: this.result,

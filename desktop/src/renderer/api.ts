@@ -116,6 +116,7 @@ export type JobSnapshot = {
   kind: 'build' | 'run' | 'heal'
   workflow_id: string
   status: JobStatus
+  paused?: boolean // a build the user paused; it holds its next action
   started: number
   finished: number | null
   result: Record<string, unknown> | null

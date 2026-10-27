@@ -41,6 +41,9 @@ export interface AgentOptions {
   done?: () => boolean
   /** droid's AskUser: put the questions to the user; null if they declined. */
   askUser?: (questions: AskUserQuestion[]) => Promise<string[] | null>
+  /** Pausing: every action waits on gate(), and paused time doesn't count toward the timeout. */
+  gate?: () => Promise<void>
+  paused?: () => boolean
 }
 
 export interface AskUserQuestion {
@@ -84,7 +87,12 @@ export class Agent {
       cwd: this.opts.scope.scratch,
       autonomyLevel: AutonomyLevel.Off,
       mcpServers: this.opts.mcpServers,
-      permissionHandler: (params) => handler(params as unknown as Record<string, unknown>) as never,
+      // Every action asks permission first, so this is where a paused build holds.
+      permissionHandler: async (params) => {
+        await this.opts.gate?.()
+        if (this.closed) return { selectedOption: 'cancel', comment: 'the build was stopped' } as never
+        return handler(params as unknown as Record<string, unknown>) as never
+      },
       askUserHandler: async ({ questions }) => {
         const answers = this.opts.askUser ? await this.opts.askUser(questions as AskUserQuestion[]) : null
         if (!answers) return { cancelled: true } as never
@@ -111,36 +119,48 @@ export class Agent {
   }
 
   private async turn(prompt: string, images?: Base64ImageSource[]): Promise<boolean> {
-    const abort = AbortSignal.timeout(AGENT_TIMEOUT_MS)
+    // A turn may take AGENT_TIMEOUT_MS of unpaused time.
+    const timeout = new AbortController()
+    let left = AGENT_TIMEOUT_MS
+    const clock = setInterval(() => {
+      if (this.opts.paused?.()) return
+      left -= 1000
+      if (left <= 0) timeout.abort(new Error('the agent took too long'))
+    }, 1000)
+    const abort = timeout.signal
     let success = false
     // Partial messages on, for the connector sign-in events; text deltas are ignored.
     const stream = this.session!.stream(prompt, { abortSignal: abort, includePartialMessages: true, ...(images?.length ? { images } : {}) })
-    for await (const msg of stream) {
-      switch (msg.type) {
-        case DroidMessageType.ToolCall:
-          this.emit('agent', msg.name, describeToolCall(msg.input))
-          break
-        case DroidMessageType.ToolResult:
-          if (msg.isError) this.emit('agent', `${msg.toolName} error`, short(msg.content))
-          break
-        case DroidMessageType.Assistant:
-          if (msg.text.trim()) this.emit('agent', 'says', short(msg.text, 600))
-          break
-        case DroidMessageType.McpAuthRequired:
-          this.emit('connector', `${msg.serverName} needs you to sign in`, msg.message)
-          this.opts.onAuthRequired?.({ serverName: msg.serverName, authUrl: msg.authUrl, message: msg.message })
-          break
-        case DroidMessageType.McpAuthCompleted:
-          this.emit('connector', `${msg.serverName} sign-in ${msg.outcome}`, msg.message)
-          break
-        case DroidMessageType.Error:
-          this.emit('error', 'error', short(msg.message))
-          break
-        case DroidMessageType.Result:
-          success = msg.success
-          if (!msg.success) this.emit('error', 'turn failed', short(`${msg.subtype} ${'error' in msg ? JSON.stringify(msg.error) : ''}`))
-          break
+    try {
+      for await (const msg of stream) {
+        switch (msg.type) {
+          case DroidMessageType.ToolCall:
+            this.emit('agent', msg.name, describeToolCall(msg.input))
+            break
+          case DroidMessageType.ToolResult:
+            if (msg.isError) this.emit('agent', `${msg.toolName} error`, short(msg.content))
+            break
+          case DroidMessageType.Assistant:
+            if (msg.text.trim()) this.emit('agent', 'says', short(msg.text, 600))
+            break
+          case DroidMessageType.McpAuthRequired:
+            this.emit('connector', `${msg.serverName} needs you to sign in`, msg.message)
+            this.opts.onAuthRequired?.({ serverName: msg.serverName, authUrl: msg.authUrl, message: msg.message })
+            break
+          case DroidMessageType.McpAuthCompleted:
+            this.emit('connector', `${msg.serverName} sign-in ${msg.outcome}`, msg.message)
+            break
+          case DroidMessageType.Error:
+            this.emit('error', 'error', short(msg.message))
+            break
+          case DroidMessageType.Result:
+            success = msg.success
+            if (!msg.success) this.emit('error', 'turn failed', short(`${msg.subtype} ${'error' in msg ? JSON.stringify(msg.error) : ''}`))
+            break
+        }
       }
+    } finally {
+      clearInterval(clock)
     }
     return success
   }

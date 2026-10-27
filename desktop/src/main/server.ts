@@ -302,6 +302,19 @@ route('POST', '/jobs/:id/stop', async (req) => {
   return j.snapshot()
 })
 
+route('POST', '/jobs/:id/pause', (req) => {
+  const j = job(req.params.id)
+  if (j.kind !== 'build') throw new HttpError(400, 'only builds can be paused')
+  j.pause()
+  return j.snapshot()
+})
+
+route('POST', '/jobs/:id/resume', (req) => {
+  const j = job(req.params.id)
+  j.resume()
+  return j.snapshot()
+})
+
 route('GET', '/jobs/:id/shots/:n.jpg', (req) => {
   const shot = job(req.params.id).shot(Number(req.params.n))
   if (!shot) throw new HttpError(404, 'no such screenshot')

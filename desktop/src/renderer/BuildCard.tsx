@@ -56,6 +56,7 @@ export function recentSteps(job: JobSnapshot, count: number): JobEvent[] {
 /** What the build or run is doing, in a couple of words. */
 export function jobTitle(job: JobSnapshot): string {
   const running = live(job.status)
+  if (running && job.paused) return 'Paused'
   if (job.kind === 'build') {
     if (!running) return job.status === 'passed' ? 'Workflow built' : 'Build stopped'
     return job.requests.some((r) => r.status === 'pending') ? 'Waiting for you' : `${BUILD_PHASES[buildPhase(job)].label}…`
@@ -84,7 +85,7 @@ export function formatDuration(seconds: number): string {
  * The live build or run at a glance: what it's doing, its phase, the latest screenshot
  * and the last few actions.
  */
-export function BuildCard({ job, onStop }: { job: JobSnapshot; onStop?: () => void }) {
+export function BuildCard({ job, onStop, onPause }: { job: JobSnapshot; onStop?: () => void; onPause?: (paused: boolean) => void }) {
   const [now, setNow] = useState(() => Date.now() / 1000)
   const running = live(job.status)
   useEffect(() => {
@@ -102,9 +103,9 @@ export function BuildCard({ job, onStop }: { job: JobSnapshot; onStop?: () => vo
   const title = jobTitle(job)
 
   return (
-    <section className={`card build ${running ? 'build-live' : `build-${job.status}`}`} aria-live="polite">
+    <section className={`card build ${running ? 'build-live' : `build-${job.status}`}${running && job.paused ? ' build-paused' : ''}`} aria-live="polite">
       <div className="build-top">
-        <div className={`blocks${running && !pending.length ? ' blocks-live' : ''}`} aria-hidden="true">
+        <div className={`blocks${running && !pending.length && !job.paused ? ' blocks-live' : ''}`} aria-hidden="true">
           <span />
           <span />
           <span />
@@ -115,10 +116,19 @@ export function BuildCard({ job, onStop }: { job: JobSnapshot; onStop?: () => vo
             {latest ? friendly(latest) : 'Starting the agent…'} · <span className="mono">{formatDuration(elapsed)}</span>
           </p>
         </div>
-        {running && onStop && (
-          <button type="button" className="secondary stop" onClick={onStop}>
-            Stop
-          </button>
+        {running && (onStop || onPause) && (
+          <div className="build-controls">
+            {onPause && job.kind === 'build' && (
+              <button type="button" className="secondary" onClick={() => onPause(!job.paused)}>
+                {job.paused ? 'Resume' : 'Pause'}
+              </button>
+            )}
+            {onStop && (
+              <button type="button" className="secondary stop" onClick={onStop}>
+                Stop
+              </button>
+            )}
+          </div>
         )}
       </div>
 

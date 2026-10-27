@@ -236,11 +236,13 @@ function JobPanel({
   job,
   onAnswer,
   onStop,
+  onPause,
   spring = false,
 }: {
   job: JobSnapshot
   onAnswer: (r: UserRequest, approved: boolean, feedback?: string) => Promise<void>
   onStop: () => Promise<void>
+  onPause: (paused: boolean) => Promise<void>
   /** Arriving from the send animation: the cards spring in, one after another. */
   spring?: boolean
 }) {
@@ -250,7 +252,7 @@ function JobPanel({
 
   return (
     <div className={`job${spring ? ' springing' : ''}`}>
-      <BuildCard job={job} onStop={onStop} />
+      <BuildCard job={job} onStop={onStop} onPause={onPause} />
 
       {pending.map((r) => (
         <RequestCard key={r.id} request={r} onAnswer={(approved, feedback) => onAnswer(r, approved, feedback)} />
@@ -388,6 +390,11 @@ export function WorkflowView({
     onChanged()
   }
 
+  async function pause(paused: boolean) {
+    if (!job) return
+    setJob(await api<JobSnapshot>(`/jobs/${job.job_id}/${paused ? 'pause' : 'resume'}`, {}))
+  }
+
   async function run() {
     setError(null)
     try {
@@ -458,7 +465,7 @@ export function WorkflowView({
 
       {error && <p className="request-error">{error}</p>}
 
-      {job && (!intro || intro.landed) && <JobPanel job={job} onAnswer={answer} onStop={stop} spring={intro !== null} />}
+      {job && (!intro || intro.landed) && <JobPanel job={job} onAnswer={answer} onStop={stop} onPause={pause} spring={intro !== null} />}
 
       {wf.status !== 'building' && (
         <div className="wf-grid">

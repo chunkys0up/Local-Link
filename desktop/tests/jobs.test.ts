@@ -67,3 +67,30 @@ test('the live job is the newest one still going, and attention reaches listener
   older.finish('failed')
   expect(liveJob()).toBeNull()
 })
+
+test('a paused build holds its next action until resumed, and stopping lets it go', async () => {
+  const job = new Job('build', 'wf_pause')
+  await job.whenRunning() // not paused: no wait
+
+  job.pause()
+  expect(job.snapshot().paused).toBe(true)
+  let through = 0
+  const held = job.whenRunning().then(() => through++)
+  await new Promise((r) => setTimeout(r, 10))
+  expect(through).toBe(0)
+  job.resume()
+  await held
+  expect(through).toBe(1)
+  expect(job.events.map((e) => e.label)).toEqual(['Paused', 'Resumed'])
+
+  job.pause()
+  const released = job.whenRunning()
+  await job.stop()
+  await released
+  expect(job.paused).toBe(false)
+
+  // Runs can't be paused.
+  const run = new Job('run', 'wf_pause')
+  run.pause()
+  expect(run.paused).toBe(false)
+})

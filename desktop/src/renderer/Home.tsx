@@ -158,7 +158,9 @@ export function Home({ onStart, leaving = false }: { onStart: (prompt: string, f
 
       <div className="home-hero" ref={hero}>
         <h1>
-          Let’s <span className="retro">Retro</span>automate your finance workflows.
+          Let’s <span className="retro">Retro</span>automate your
+          <br />
+          legacy finance workflows.
         </h1>
         <p>
           Retronaut explores your apps and accounts, shows you its plan, then builds an automation that runs on your own software and repairs itself when anything changes.

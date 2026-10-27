@@ -635,6 +635,71 @@ button.chip img {
 
 /* ---------- accounts and readiness ---------- */
 
+dialog.accounts {
+  width: min(520px, calc(100vw - 48px));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+}
+dialog.accounts::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+.accounts-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+.accounts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.accounts-head h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.accounts-head p {
+  margin-top: 6px;
+}
+.gmail-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gmail-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gmail-fields input {
+  flex: 1 1 200px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 13px;
+  background: var(--field);
+  color: var(--text);
+}
+.gmail-fields input:focus {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+button.link.inline {
+  display: inline;
+  font-size: inherit;
+}
+.text-ok { color: var(--ok-text); font-weight: 500; }
+
 .notice {
   display: flex;
   flex-direction: column;
@@ -714,9 +779,27 @@ button.small-button {
   min-width: 0;
   flex: 1;
 }
-button.stop {
+/* Pause (or Resume) above Stop; Stop is tinted red, since it can't be undone. */
+.build-controls {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.build-controls button {
   height: 32px;
   padding: 0 14px;
+}
+.build-controls button.stop {
+  background: rgba(248, 113, 113, 0.14);
+  color: var(--bad-text);
+}
+.build-controls button.stop:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.24);
+}
+/* Paused: the phase bar holds where it is. */
+.build-paused .phases li.now .phase-dot::after {
+  animation-play-state: paused;
 }
 .build-text h2 {
   font-size: 17px;
