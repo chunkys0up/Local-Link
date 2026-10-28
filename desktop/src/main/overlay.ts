@@ -36,8 +36,18 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     font: 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-user-select: none; cursor: default; }
   .frame { position: fixed; inset: 0; border-radius: var(--top-r, 0) var(--top-r, 0) var(--bottom-r, 0) var(--bottom-r, 0); opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
-  /* A build or run is going: a quiet reminder. */
-  body.session .frame { opacity: 1; border: 4px solid rgba(255, 125, 54, 0.75); box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22); }
+  /* A build or run is going: a quiet reminder. Its border is a ring (masked to the edge)
+     lit by one radial glow, brightest at its centre, whose centre travels around the
+     edge of the screen (the orbit keyframes are written for the screen's size below). */
+  @property --gx { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --gy { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  .frame::before { content: ''; position: absolute; inset: 0; padding: 5px; border-radius: inherit; opacity: 0;
+    background: radial-gradient(circle 700px at var(--gx) var(--gy), rgb(255, 190, 140), rgba(255, 125, 54, 0.85) 30%, rgba(255, 110, 40, 0.3));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    transition: opacity .3s; animation: orbit 8s linear infinite; }
+  body.session .frame { opacity: 1; box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22); }
+  body.session .frame::before { opacity: 1; }
+  body.on .frame::before { opacity: 0; }
   /* Driving an app right now: hands off. */
   body.on .frame { opacity: 1; border: 6px solid var(--accent); box-shadow: inset 0 0 36px 8px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
@@ -57,12 +67,32 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   <div class="frame"></div>
   <div class="pill" id="pill"><span class="dot"></span><span id="text"></span><button id="stop">Stop</button></div>
 <script>
+  // The glow's path: clockwise along the screen's edge from the top-left, each side taking
+  // time in proportion to its length, so it moves at one speed all the way round. Redrawn
+  // whenever the frame updates: the window starts small and hidden, then fills the screen.
+  const orbit = document.createElement('style')
+  document.head.appendChild(orbit)
+  let orbitFor = ''
+  const drawOrbit = () => {
+    const w = innerWidth, h = innerHeight, p = 2 * (w + h)
+    if (!w || !h || orbitFor === w + 'x' + h) return
+    orbitFor = w + 'x' + h
+    const at = (d) => (100 * d / p).toFixed(3) + '%'
+    orbit.textContent = '@keyframes orbit {' +
+      '0%, 100% { --gx: 0vw; --gy: 0vh }' +
+      at(w) + ' { --gx: 100vw; --gy: 0vh }' +
+      at(w + h) + ' { --gx: 100vw; --gy: 100vh }' +
+      at(2 * w + h) + ' { --gx: 0vw; --gy: 100vh } }'
+  }
+  drawOrbit()
+  addEventListener('resize', drawOrbit)
   const pill = document.getElementById('pill'), text = document.getElementById('text'), stop = document.getElementById('stop')
   // The window ignores the mouse except over the pill, so clicks reach the app beneath.
   pill.addEventListener('mouseenter', () => window.retronaut.overlay.hover(true))
   pill.addEventListener('mouseleave', () => window.retronaut.overlay.hover(false))
   stop.addEventListener('click', () => window.retronaut.overlay.stop())
   window.render = (s) => {
+    drawOrbit()
     document.body.classList.toggle('session', s.session)
     document.body.classList.toggle('on', s.active)
     document.body.classList.toggle('paused', s.paused)
