@@ -13,7 +13,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "demo:book": "node demo/make-book.mjs",
-    "demo:reset": "node demo/reset.mjs"
+    "demo:reset": "node demo/reset.mjs",
+    "postinstall": "node scripts/name-dev-app.mjs"
   },
   "dependencies": {
     "@factory/droid-sdk": "0.10.0",

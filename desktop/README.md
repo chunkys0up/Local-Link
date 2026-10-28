@@ -18,8 +18,14 @@ npm run demo:reset # between run-throughs: a fresh book, and saved workflows for
 
 Needs the `droid` CLI on PATH (or in `~/.local/bin`) and `FACTORY_API_KEY` in the repo's
 `.env`. macOS asks for **Accessibility** (clicks, keys, menus) and **Screen Recording**
-(screenshots) for the app that launched Retronaut: in dev that is "Electron". The home
-screen shows what's missing, with buttons to the right System Settings panes.
+(screenshots) for the app that launched Retronaut. The home screen shows what's missing,
+with buttons to the right System Settings panes.
+
+In dev, Retronaut runs inside Electron's own `Electron.app`. `scripts/name-dev-app.mjs` (run
+after `npm install` and by `npm run dev`) renames that bundle to Retronaut, gives it the app
+icon and re-signs it, so macOS shows "Retronaut" in the menu bar, Dock and ⌘-Tab. Re-signing
+changes the bundle's identity, so after the first rename (and after Electron upgrades) turn
+Accessibility and Screen Recording back on for Retronaut.
 
 ## How a workflow is built (`src/main/builder.ts`)
 

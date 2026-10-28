@@ -1,10 +1,17 @@
 // Dev loop: vite for the renderer, esbuild watching the main process, then Electron.
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { setTimeout as wait } from 'node:timers/promises'
 
 const run = (cmd, args, env = {}) =>
   spawn(cmd, args, { stdio: 'inherit', env: { ...process.env, ...env } })
+
+// macOS shows the development app as "Retronaut", not "Electron" (does nothing once done).
+try {
+  execFileSync(process.execPath, ['scripts/name-dev-app.mjs'], { stdio: 'inherit' })
+} catch {
+  console.log('[name-dev-app] could not rename the development app; starting it as Electron')
+}
 
 const children = [run('npx', ['vite']), run('node', ['scripts/build.mjs', '--watch'])]
 while (!existsSync('dist/main.cjs') || !existsSync('dist/retronaut.mjs')) await wait(200)
