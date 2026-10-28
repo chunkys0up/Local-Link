@@ -55,7 +55,10 @@ button.side-new {
   width: 100%;
   height: 38px;
   margin-bottom: 22px;
-  padding: 0 12px;
+  /* The plus sits at the logo's centre (34px), so it stays put when the sidebar collapses. */
+  padding: 0 12px 0 16px;
+  overflow: hidden;
+  transition: width 0.32s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.15s;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--glass);
@@ -70,6 +73,9 @@ button.side-new.active {
   background: var(--accent-soft);
 }
 .side-new .plus {
+  flex: none;
+  width: 10px;
+  text-align: center;
   color: var(--accent-text);
   font-size: 16px;
   line-height: 1;
@@ -192,7 +198,7 @@ button.side-toggle:hover:not(:disabled) {
   overflow: hidden;
 }
 .side-name,
-button.side-new,
+.side-new-label,
 .side-label,
 .side-empty,
 .side-bottom,
@@ -202,7 +208,7 @@ button.side-new,
 }
 .collapsed .side-name,
 .collapsed button.side-toggle,
-.collapsed button.side-new,
+.collapsed .side-new-label,
 .collapsed .side-label,
 .collapsed .side-empty,
 .collapsed .side-bottom,
@@ -214,7 +220,8 @@ button.side-new,
 .side-section button.side-item {
   padding-left: 18px;
 }
-.collapsed button.side-item {
+.collapsed button.side-item,
+.collapsed button.side-new {
   width: 44px;
 }
 
@@ -487,13 +494,6 @@ button.brand-button:hover:not(:disabled) {
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-}
-/* Each tile softly lights up now and then, like bits blinking: its own speed, start
-   and brightness come from Home, and it only fades, never snaps. */
-.tile::after {
-  content: '';
-  position: absolute;
-  inset: 0;
   /* Settling back is slow, so the pointer leaves a fading trail across the grid. */
   transition:
     transform 1.6s cubic-bezier(0.22, 1, 0.36, 1),
@@ -506,6 +506,13 @@ button.brand-button:hover:not(:disabled) {
   transition:
     transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
     background-color 0.25s ease-out;
+}
+/* Each tile softly lights up now and then, like bits blinking: its own speed, start
+   and brightness come from Home, and it only fades, never snaps. */
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-radius: inherit;
   background: rgba(255, 255, 255, 0.06);
   opacity: 0;
