@@ -65,7 +65,8 @@ export type Health = {
 }
 
 export type PlanStep = { title: string; how: string; detail: string }
-export type Plan = { name?: string; summary: string; steps: PlanStep[]; apps: string[]; connectors: string[] }
+export type PlanBackup = { method: 'files' | 'app' | 'export' | 'none'; detail: string }
+export type Plan = { name?: string; summary: string; steps: PlanStep[]; apps: string[]; connectors: string[]; backup?: PlanBackup }
 
 export type WorkflowStatus = 'building' | 'ready' | 'needs_attention' | 'failed'
 

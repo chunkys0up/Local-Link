@@ -24,6 +24,7 @@ import * as gmail from './gmail'
 import * as workflows from './workflows'
 
 const MAX_FIXES = 2
+const [BACKUP, RESTORE] = workflows.BACKUP_SCRIPTS
 
 export const RUNTIME_API = `
 ## ./retronaut.mjs (import * as ll from './retronaut.mjs')
@@ -40,6 +41,9 @@ const app = ll.app('GnuCash')
   app.type('text')  app.clickAt(x, y, { window: 'Title' })  (points from the window's top-left)
   app.clickElement('window 1/button 2')  app.waitForWindow('Title' | /re/, ms)  app.waitForWindowGone(...)
   app.window('Title')  app.windows()  app.screenshot(path)
+  app.quit()  (ends it if it won't quit, losing unsaved changes)  app.open(path?)  (the app, or its data file)
+ll.backup.save([absolute paths of the app's data files or folders])  ll.backup.restore()  ll.backup.exists()
+                          set the data aside and put it back exactly (hash-checked); for backup.mjs / restore.mjs
 ll.readText(path) (gunzips if needed)  ll.xml.parse(text)  ll.sqlite(path, { readOnly })  ll.csv.stringify(rows)
 ll.sleep(ms)   Node's standard library is available too (node:fs, node:path, ...).
 `
@@ -72,9 +76,14 @@ exactly how to do it, then write that down as code.
    - screenshot + click at coordinates, as the last resort.
    Take a screenshot after each UI action to check where you are. While exploring,
    don't make the real change: cancel dialogs you open (escape).
-3. Call propose_plan with the steps and how each is done, then end your turn. You are
-   resumed with the user's approval or feedback; on feedback, revise and propose again.
-4. Write workflow.mjs in the working folder with ./retronaut.mjs (API below):
+3. Work out how to back up and restore the app's data (see "Backups" below), and write
+   backup.mjs and restore.mjs. Test them before the plan: node backup.mjs, then
+   node restore.mjs with no change in between, then check the app is open on the same
+   data as before.
+4. Call propose_plan with the steps, how each is done, and how the data is backed up,
+   then end your turn. You are resumed with the user's approval or feedback; on
+   feedback, revise and propose again.
+5. Write workflow.mjs in the working folder with ./retronaut.mjs (API below):
    - one ll.step per meaningful action, with { app } when it drives an app;
    - idempotent: record each item you handle with state.markDone and skip items
      state.done says were handled, so reruns never create duplicates;
@@ -86,8 +95,34 @@ exactly how to do it, then write that down as code.
    - wait for windows (waitForWindow) instead of fixed sleeps where you can;
    - keep money exact (integer cents), and never invent amounts, customers or accounts:
      if the data doesn't say, throw with a clear message.
-   Run it yourself with node if that helps, then finish your turn with a short summary.
-   Retronaut then runs it as the test run and tells you the result.
+   Run it yourself with node if that helps (node backup.mjs first), then finish your
+   turn with a short summary. Retronaut then backs up the data, runs it as the test
+   run, and tells you the result; if it fails, Retronaut restores the backup first.
+
+## Backups
+Testing changes the user's real data. So before anything that could change it, the data
+is backed up, and if the attempt goes wrong it is restored: never repair data by hand.
+Every app keeps its data differently, so find out how this one does while exploring,
+and write two scripts in the working folder, using ll.workflow and step like workflow.mjs:
+- backup.mjs sets the current data aside.
+- restore.mjs puts it back, and leaves the app open on the restored data, as the user had it.
+Pick the method that fits the app, most dependable first:
+- "files": the data lives in files or a folder you can find (recent files, the app's
+  preferences, Application Support, the document it has open). Back up everything the
+  app keeps for that data (the whole company folder, a database with its -wal/-shm files,
+  attachments), with ll.backup.save([paths]) and ll.backup.restore(). If the app holds
+  the data open it would write its own copy back over a restore, so restore.mjs quits it
+  first (app.quit()), restores, then reopens the data (app.open(path)). backup.mjs must
+  only copy saved data: if the app shows unsaved changes, throw instead.
+- "app": the app's own backup and restore (File › Back Up, a Restore command, a
+  maintenance menu), driven through its menus. Keep its backups in the working folder's
+  .backups folder.
+- "export": export everything and import it back, only if that is complete and exact.
+- "none": no safe way exists. Say why in the plan; the user decides whether to test without one.
+Retronaut won't run workflow.mjs until backup.mjs and restore.mjs exist, unless the
+approved plan's backup method is "none". When you test workflow.mjs yourself, run
+node backup.mjs first, and node restore.mjs if anything goes wrong, before you change
+the script and try again.
 
 ## Rules
 - Working folder: {workspace}. Write files only there. Commands: read-only ones, or
@@ -100,9 +135,32 @@ const TEST_FAILED = `Retronaut's test run of workflow.mjs failed.
 
 {failure}
 
+{restored}
+
 Find the cause (screenshot the app if it helps; the screenshot attached is from the
-moment it failed). Fix workflow.mjs, then finish your turn. Items the run already
-handled are recorded in state.json; the script must skip them, not redo them.`
+moment it failed). Fix workflow.mjs, then finish your turn.`
+
+const RESTORED = `Retronaut restored the backup (restore.mjs) after the failure, so the app's data and
+state.json are back to how they were before the test. Don't repair anything by hand.`
+
+const RESTORE_FAILED = `Restoring the backup failed, so the data may still hold part of the test's changes:
+{error}
+Check the app's data, fix restore.mjs (and backup.mjs if the backup was incomplete), and
+run node restore.mjs to put it back before you fix workflow.mjs.`
+
+const NOT_RESTORED = `There was no backup to restore (the plan's backup method is "none"). Items the run
+already handled are recorded in state.json; the script must skip them, not redo them.`
+
+const BACKUP_FAILED = `Retronaut couldn't back up the data before the test run, so it didn't run the test.
+
+{failure}
+
+Fix backup.mjs (run it, then restore.mjs, to check the round trip), then finish your turn.`
+
+const NO_BACKUP = `backup.mjs and restore.mjs aren't in the working folder, and the plan has a backup
+method. Write them as described under "Backups", run the round trip once (node backup.mjs,
+then node restore.mjs), then finish your turn.`
+
 
 const HEAL = `You maintain a saved automation on the user's Mac. It worked before, and failed in
 today's run. What it does: "{goal}"
@@ -118,7 +176,8 @@ folder, with ./retronaut.mjs. Work out what changed, for example an app update t
 moved a menu item or button, a renamed window, a different email format, by looking at
 the app now (screenshot, list_menu, ui_tree) and at the data. Then make the smallest fix
 to workflow.mjs that keeps the same behaviour, and finish your turn with what changed
-and why. Don't redo items state.json lists as done. If the failure is one of the
+and why. If backup.mjs and restore.mjs are in the folder, run node backup.mjs before you
+try the script, and node restore.mjs if the attempt goes wrong; never repair data by hand. Don't redo items state.json lists as done. If the failure is one of the
 script's own safety checks working as intended (the data needs a person), change
 nothing and say so: never weaken a check to get a run through.
 
@@ -141,7 +200,11 @@ function describeFailure(outcome: ScriptOutcome): string {
 
 function describePlan(plan: Plan | null): string {
   if (!plan) return '(none recorded)'
-  return [plan.summary, ...plan.steps.map((s, i) => `${i + 1}. ${s.title} [${s.how}]: ${s.detail}`)].join('\n')
+  return [
+    plan.summary,
+    ...plan.steps.map((s, i) => `${i + 1}. ${s.title} [${s.how}]: ${s.detail}`),
+    ...(plan.backup ? [`Backups (${plan.backup.method}): ${plan.backup.detail}`] : []),
+  ].join('\n')
 }
 
 function attachments(outcome: ScriptOutcome) {
@@ -259,11 +322,18 @@ function toolContext(job: Job, allowed: Map<string, AllowedApp>, questions: Ques
   }
 }
 
-function makeAgent(name: string, job: Job, workspace: string, ctx: ReturnType<typeof toolContext>, questions: Questions | null) {
+function makeAgent(
+  name: string,
+  job: Job,
+  workspace: string,
+  ctx: ReturnType<typeof toolContext>,
+  questions: Questions | null,
+  checkCommand?: (command: string) => string | null,
+) {
   const agent = new Agent({
     name,
     emit: job.emit,
-    scope: { scratch: workspace, servers: [SERVER], toolFilter: readOnlyConnectorTools, askUser: Boolean(questions) },
+    scope: { scratch: workspace, servers: [SERVER], toolFilter: readOnlyConnectorTools, askUser: Boolean(questions), checkCommand },
     askUser: questions?.askUser,
     mcpServers: [computerServer(ctx)],
     onAuthRequired: ({ serverName, authUrl, message }) => {
@@ -286,11 +356,60 @@ export function startBuild(goal: string): { workflow: workflows.Workflow; job: J
   return { workflow: workflows.get(wf.id)!, job }
 }
 
+/** Whether the build can undo a test: both backup scripts are written, or the approved plan says there's no safe way. */
+function backupKit(workspace: string): boolean {
+  return existsSync(join(workspace, BACKUP)) && existsSync(join(workspace, RESTORE))
+}
+
+function noBackupPlanned(wfId: string): boolean {
+  return workflows.get(wfId)?.plan?.backup?.method === 'none'
+}
+
+/** The builder may run workflow.mjs (which changes real data) only once a test can be undone. */
+function requireBackup(wfId: string, workspace: string) {
+  return (command: string): string | null => {
+    if (!/(^|[\s/])workflow\.mjs\b/.test(command) || backupKit(workspace) || noBackupPlanned(wfId)) return null
+    return `write and test ${BACKUP} and ${RESTORE} before running workflow.mjs: it changes the user's real data, and a failed attempt must be undone by restoring, not by hand (see "Backups"). If the app has no safe way to back up, propose a plan with backup method "none".`
+  }
+}
+
+/** Back up the data before a test run. Null when it was backed up (or there's nothing to back up with), else the failure. */
+async function backupForTest(job: Job, workspace: string, out: string): Promise<ScriptOutcome | null> {
+  job.emit('info', 'Backing up before the test', 'so a failed test can be undone')
+  const outcome = await runScript(job, { dir: workspace, script: BACKUP, out, state: join(workspace, '.backups', 'state.json'), test: true })
+  if (!outcome.ok) {
+    job.emit('fail', 'Backup failed', outcome.error ?? '', outcome.failureShot ? job.saveShot(outcome.failureShot) : undefined)
+    return outcome
+  }
+  // What the run records is part of what a restore undoes.
+  const state = join(workspace, workflows.STATE)
+  const saved = join(workspace, '.backups', 'state.before.json')
+  rmSync(saved, { force: true })
+  if (existsSync(state)) copyFileSync(state, saved)
+  return null
+}
+
+/** Put the data (and state.json) back after a failed test. Null when restored, else the error. */
+async function restoreAfterTest(job: Job, workspace: string, out: string): Promise<string | null> {
+  job.emit('info', 'Restoring the backup', 'the test failed, so the data goes back to how it was before it')
+  const outcome = await runScript(job, { dir: workspace, script: RESTORE, out, state: join(workspace, '.backups', 'state.json'), test: true })
+  if (!outcome.ok) {
+    job.emit('fail', 'Restore failed', outcome.error ?? '', outcome.failureShot ? job.saveShot(outcome.failureShot) : undefined)
+    return outcome.error ?? 'restore.mjs failed'
+  }
+  const state = join(workspace, workflows.STATE)
+  const saved = join(workspace, '.backups', 'state.before.json')
+  if (existsSync(saved)) copyFileSync(saved, state)
+  else rmSync(state, { force: true })
+  job.emit('ok', 'Restored to before the test', 'nothing from the failed test was left behind')
+  return null
+}
+
 async function build(wfId: string, job: Job): Promise<void> {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), `retronaut-${wfId}-`)))
   const allowed = new Map<string, AllowedApp>()
   const questions = new Questions(job, wfId, allowed)
-  const agent = makeAgent('Builder', job, workspace, toolContext(job, allowed, questions), questions)
+  const agent = makeAgent('Builder', job, workspace, toolContext(job, allowed, questions), questions, requireBackup(wfId, workspace))
   let outcome: ScriptOutcome | null = null
   try {
     provideRuntime(workspace)
@@ -307,20 +426,44 @@ async function build(wfId: string, job: Job): Promise<void> {
       await job.whenRunning() // a test run drives the apps; not while paused
       if (job.stopped) throw new Error('stopped')
       if (!existsSync(join(workspace, workflows.SCRIPT))) break
+      if (!backupKit(workspace) && !noBackupPlanned(wfId)) {
+        job.emit('info', 'No backup scripts yet', 'asking the builder to write them before testing')
+        await converse(agent, questions, NO_BACKUP)
+        if (!backupKit(workspace)) {
+          outcome = null
+          job.emit('fail', 'No way to undo a test', 'the builder did not write backup.mjs and restore.mjs, so the test was not run')
+          break
+        }
+      }
+      const out = join(workspace, `test-${attempt + 1}`)
+      const canUndo = backupKit(workspace)
+      if (canUndo) {
+        const failed = await backupForTest(job, workspace, join(out, 'backup'))
+        if (failed) {
+          outcome = failed
+          if (attempt === MAX_FIXES) break
+          await converse(agent, questions, BACKUP_FAILED.replace('{failure}', describeFailure(failed)), attachments(failed))
+          continue
+        }
+      } else {
+        job.emit('info', 'Testing without a backup', 'the approved plan says this app has no safe way to back up')
+      }
       job.emit('info', attempt === 0 ? 'Test run' : `Test run ${attempt + 1}`, 'running workflow.mjs for real')
       outcome = await runScript(job, {
         dir: workspace,
         script: workflows.SCRIPT,
-        out: join(workspace, `test-${attempt + 1}`),
+        out,
         state: join(workspace, workflows.STATE),
         test: true,
       })
       if (outcome.ok) break
       if (outcome.failureShot) job.emit('fail', 'Test run failed', outcome.error ?? '', job.saveShot(outcome.failureShot))
       else job.emit('fail', 'Test run failed', outcome.error ?? '')
+      const restoreError = canUndo ? await restoreAfterTest(job, workspace, join(out, 'restore')) : null
+      const restored = !canUndo ? NOT_RESTORED : restoreError ? RESTORE_FAILED.replace('{error}', restoreError) : RESTORED
       if (attempt === MAX_FIXES) break
       job.emit('info', 'Fixing the script', 'sending the failure to the builder')
-      await converse(agent, questions, TEST_FAILED.replace('{failure}', describeFailure(outcome)), attachments(outcome))
+      await converse(agent, questions, TEST_FAILED.replace('{failure}', describeFailure(outcome)).replace('{restored}', restored), attachments(outcome))
     }
 
     if (outcome?.ok) {
@@ -428,6 +571,7 @@ async function heal(wfId: string, job: Job, outcome: ScriptOutcome): Promise<boo
   try {
     copyFileSync(join(dir, workflows.SCRIPT), join(workspace, workflows.SCRIPT))
     if (existsSync(join(dir, workflows.STATE))) copyFileSync(join(dir, workflows.STATE), join(workspace, workflows.STATE))
+    for (const kit of [BACKUP, RESTORE]) if (existsSync(join(dir, kit))) copyFileSync(join(dir, kit), join(workspace, kit))
     provideRuntime(workspace)
     const before = readFileSync(join(workspace, workflows.SCRIPT), 'utf8')
     job.emit('info', 'Healing', 'an agent is looking at what changed')

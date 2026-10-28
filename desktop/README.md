@@ -32,8 +32,17 @@ screen shows what's missing, with buttons to the right System Settings panes.
    agent to end its turn; the build loop resumes the same session with the user's answer.
 3. It writes `workflow.mjs` against `./retronaut.mjs` (`src/runtime/retronaut.ts`): steps, state
    for idempotency, app control, Gmail, file/XML/SQLite helpers.
-4. The engine test-runs the script (`executor.ts`); a failure goes back to the builder with the
-   failing step and a screenshot, up to twice. A passing script is installed.
+4. Tests change real data, so while exploring the builder also works out how this app's data
+   is backed up and restored, writes `backup.mjs` and `restore.mjs`, and tests the round trip.
+   The method depends on the app: copying its data files with `ll.backup.save` / `restore`
+   (quitting and reopening the app around a restore when it holds the file open), the app's
+   own backup feature through its menus, or a lossless export and re-import. The plan says
+   which; "none" means tests run with no undo, and the user approves that knowingly. The
+   policy refuses `node workflow.mjs` until both scripts exist.
+5. The engine backs up, test-runs the script (`executor.ts`), and on a failure restores the
+   backup (and `state.json`) before the failure goes back to the builder with the failing step
+   and a screenshot, up to twice. Nothing is repaired by hand. A passing script is installed
+   with its backup scripts, which healing sessions use to undo their own attempts.
 
 Runs: `POST /workflows/:id/run`. A failed step starts a healing agent on a copy of the script,
 with the failure, its screenshot, the plan and `state.json`; its fix is installed (the old one

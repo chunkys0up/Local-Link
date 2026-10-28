@@ -32,6 +32,8 @@ export interface Plan {
   steps: PlanStep[]
   apps: string[]
   connectors: string[]
+  /** How the app's data is backed up before a test and restored after a failed one. */
+  backup?: { method: 'files' | 'app' | 'export' | 'none'; detail: string }
 }
 
 /**
@@ -291,6 +293,12 @@ export function computerServer(ctx: ToolContext): SdkMcpServer {
             .min(1),
           apps: z.array(z.string()).default([]),
           connectors: z.array(z.string()).default([]),
+          backup: z
+            .object({
+              method: z.enum(['files', 'app', 'export', 'none']),
+              detail: z.string().describe('What backup.mjs saves and how restore.mjs puts it back (or, for "none", why no safe way exists), and that the round trip was tested.'),
+            })
+            .describe("How the app's data is backed up before each test and restored after a failed one."),
         },
         guarded(async (plan) => {
           ctx.emit('plan', 'Plan ready for review', plan.summary)

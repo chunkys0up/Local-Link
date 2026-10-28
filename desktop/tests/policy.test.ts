@@ -126,3 +126,15 @@ test('Gmail dates come back in one form, however the agent wrote them', async ()
   expect(utc('Sat, 25 Oct 2026 06:45:59 +0000')).toBe('2026-10-25T06:45:59.000Z')
   expect(utc('not a date')).toBe('not a date')
 })
+
+test('a session rule can refuse a command before the usual checks, even a read-only one', () => {
+  const guarded: PolicyScope = {
+    ...scope,
+    checkCommand: (command) => (/(^|[\s/])workflow\.mjs\b/.test(command) ? 'write backup.mjs first' : null),
+  }
+  expect(denyReason(execute(`node ${SCRATCH}/workflow.mjs`), guarded)).toBe('write backup.mjs first')
+  expect(denyReason(execute('node workflow.mjs', 'low'), guarded)).toBe('write backup.mjs first')
+  // Other scripts in the folder still run.
+  expect(denyReason(execute(`node ${SCRATCH}/backup.mjs`), guarded)).toBeNull()
+  expect(denyReason(execute(`node ${SCRATCH}/test-workflow.mjs`), guarded)).toBeNull()
+})

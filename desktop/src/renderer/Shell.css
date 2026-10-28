@@ -1059,6 +1059,21 @@ button.small-button {
 .how-keyboard,
 .how-accessibility { color: var(--accent-text); background: var(--accent-soft); }
 .how-coordinates { color: var(--warn-text); background: var(--warn-soft); }
+/* How a test is undone: under the steps, set apart, amber when there's no undo. */
+.plan-backup {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.plan-backup .muted {
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.how-backup { color: var(--ok-text); background: var(--ok-soft); }
+.plan-backup-none { border-color: rgba(251, 191, 36, 0.3); }
+.plan-backup-none .how-backup { color: var(--warn-text); background: var(--warn-soft); }
 
 .question {
   display: flex;

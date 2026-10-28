@@ -23,6 +23,8 @@ export interface PolicyScope {
   toolFilter?: (toolName: string, serverName: string) => string | null
   /** Whether droid's AskUser questions go to the user (a session with someone to ask). */
   askUser?: boolean
+  /** A session-specific rule for commands: a reason to refuse one, or null. */
+  checkCommand?: (command: string) => string | null
 }
 
 const NODE = /^node(?:\d+)?$/
@@ -132,6 +134,8 @@ export function denyReason(confirmation: Mapping, scope: PolicyScope): string | 
     if (isUiCommand(command)) {
       return `drive apps with Retronaut's computer tools (screenshot, click, type_text, press_keys, choose_menu), not shell UI commands (tried ${JSON.stringify(command)})`
     }
+    const refused = scope.checkCommand?.(command)
+    if (refused) return refused
     if (confirmation.impactLevel === 'low') return null
     if (runsScratchScripts(command, scratch)) return null
     return `only read-only commands, or running a node script from the working folder, are allowed (tried ${JSON.stringify(command)})`

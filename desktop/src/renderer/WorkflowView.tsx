@@ -37,7 +37,34 @@ function summaryText(summary: unknown): string {
 
 // ---------- requests that wait on the user ----------
 
+const BACKUP_LABEL: Record<string, string> = {
+  files: 'Copies its data files',
+  app: "Uses the app's own backup",
+  export: 'Exports and re-imports',
+  none: 'No backup',
+}
+
 function PlanSteps({ plan }: { plan: Plan }) {
+  return (
+    <>
+      <PlanList plan={plan} />
+      {plan.backup && (
+        <div className={`plan-backup${plan.backup.method === 'none' ? ' plan-backup-none' : ''}`}>
+          <div className="plan-title">
+            Before each test <span className="how how-backup">{BACKUP_LABEL[plan.backup.method] ?? plan.backup.method}</span>
+          </div>
+          <div className="muted small">
+            {plan.backup.method === 'none'
+              ? `${plan.backup.detail} Tests will change your data with no automatic undo.`
+              : `${plan.backup.detail} If a test fails, Retronaut restores this backup.`}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function PlanList({ plan }: { plan: Plan }) {
   return (
     <ol className="plan-steps">
       {plan.steps.map((s, i) => (

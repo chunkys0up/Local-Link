@@ -17,6 +17,7 @@ import type { AllowedApp, Plan } from './tools'
 
 export const SCRIPT = 'workflow.mjs'
 export const STATE = 'state.json'
+export const BACKUP_SCRIPTS = ['backup.mjs', 'restore.mjs']
 
 export type WorkflowStatus = 'building' | 'ready' | 'needs_attention' | 'failed'
 
@@ -145,6 +146,8 @@ export function install(id: string, workspace: string, reason: string): void {
   }
   copyFileSync(join(workspace, SCRIPT), current)
   if (existsSync(join(workspace, STATE))) copyFileSync(join(workspace, STATE), join(dir, STATE))
+  // The app's backup and restore scripts, for healing sessions to undo a failed attempt.
+  for (const kit of BACKUP_SCRIPTS) if (existsSync(join(workspace, kit))) copyFileSync(join(workspace, kit), join(dir, kit))
 }
 
 export function runDir(id: string, jobId: string): string {

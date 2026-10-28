@@ -13,8 +13,10 @@
  * output folder, which is what the healing agent starts from.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { gunzipSync } from 'node:zlib'
 import { XMLParser } from 'fast-xml-parser'
@@ -197,6 +199,19 @@ export class App {
     await sleep(150)
   }
 
+  /**
+   * Quit the app. force (the default) ends an app that won't quit, e.g. one asking
+   * whether to save, losing what it hadn't saved: right before putting a backup back.
+   */
+  async quit(opts: { force?: boolean; timeoutMs?: number } = {}): Promise<string> {
+    return this.onScreen(() => mac.quitApp(this.ref, { force: opts.force ?? true, timeoutMs: opts.timeoutMs }), `Quitting ${this.name}`)
+  }
+
+  /** Open the app, or a document (its data file) in it, and wait for its window. */
+  async open(path?: string, timeoutMs = 30_000): Promise<mac.AppWindow> {
+    return this.onScreen(() => mac.openApp(this.ref, path, timeoutMs), path ? `Opening ${path.split('/').pop()} in ${this.name}` : `Opening ${this.name}`)
+  }
+
   /** Screenshot of the front window, saved as JPEG; returns the path. */
   async screenshot(path = join(OUT, `${this.name}-${Date.now()}.jpg`)): Promise<string> {
     const shot = await mac.screenshot({ ref: this.ref })
@@ -220,6 +235,90 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   const data = (await res.json().catch(() => ({}))) as T & { detail?: string }
   if (!res.ok) throw new Error(`${path}: ${res.status} ${data.detail ?? ''}`.trim())
   return data
+}
+
+// ---------- backups: the app's data set aside before a test, put back if it fails ----------
+//
+// backup.save copies data files or folders next to this runtime (.backups/<name>/) with
+// a hash of every file; backup.restore puts each path back exactly as it was (a folder
+// loses files added since, a path that didn't exist is removed) and checks the hashes.
+// Quit the app first when it holds the data open, and open it again after a restore.
+
+const BACKUPS = process.env.RETRONAUT_BACKUPS ?? join(dirname(fileURLToPath(import.meta.url)), '.backups')
+
+interface BackupEntry {
+  path: string
+  kind: 'file' | 'folder' | 'missing'
+  hashes: Record<string, string> // file (relative to path; '' for a file) -> sha256
+}
+
+function sha256(file: string): string {
+  return createHash('sha256').update(readFileSync(file)).digest('hex')
+}
+
+function hashTree(root: string): Record<string, string> {
+  if (statSync(root).isFile()) return { '': sha256(root) }
+  const out: Record<string, string> = {}
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const full = join(dir, name)
+      if (statSync(full).isDirectory()) walk(full)
+      else out[relative(root, full)] = sha256(full)
+    }
+  }
+  walk(root)
+  return out
+}
+
+function sameHashes(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
+
+export const backup = {
+  /** Set the app's data aside (absolute paths of files or folders). Replaces an earlier backup of that name. */
+  save(paths: string[], opts: { name?: string } = {}): { name: string; files: number } {
+    const name = opts.name ?? 'default'
+    if (!paths.length) throw new Error('backup.save needs the paths of the data to back up')
+    const dir = join(BACKUPS, name)
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(dir, { recursive: true })
+    const entries: BackupEntry[] = paths.map((path, i) => {
+      if (!isAbsolute(path)) throw new Error(`backup.save: ${path} is not an absolute path`)
+      if (!existsSync(path)) return { path, kind: 'missing', hashes: {} }
+      cpSync(path, join(dir, String(i)), { recursive: true })
+      const hashes = hashTree(path)
+      if (!sameHashes(hashes, hashTree(join(dir, String(i))))) throw new Error(`backup.save: ${path} changed while it was being copied`)
+      return { path, kind: statSync(path).isDirectory() ? 'folder' : 'file', hashes }
+    })
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ saved: new Date().toISOString(), entries }, null, 2))
+    const files = entries.reduce((n, e) => n + Object.keys(e.hashes).length, 0)
+    log('Backed up', `${files} file${files === 1 ? '' : 's'}: ${paths.join(', ')}`)
+    return { name, files }
+  },
+
+  /** Put the backed-up data back exactly, and check every file against its hash. */
+  restore(opts: { name?: string } = {}): { name: string; files: number } {
+    const name = opts.name ?? 'default'
+    const dir = join(BACKUPS, name)
+    const manifest = join(dir, 'manifest.json')
+    if (!existsSync(manifest)) throw new Error(`no backup named "${name}" to restore`)
+    const { entries } = JSON.parse(readFileSync(manifest, 'utf8')) as { entries: BackupEntry[] }
+    entries.forEach((e, i) => {
+      rmSync(e.path, { recursive: true, force: true })
+      if (e.kind === 'missing') return
+      cpSync(join(dir, String(i)), e.path, { recursive: true })
+      if (!sameHashes(e.hashes, hashTree(e.path))) throw new Error(`backup.restore: ${e.path} doesn't match its backup after restoring`)
+    })
+    const files = entries.reduce((n, e) => n + Object.keys(e.hashes).length, 0)
+    log('Restored from the backup', `${files} file${files === 1 ? '' : 's'}: ${entries.map((e) => e.path).join(', ')}`)
+    return { name, files }
+  },
+
+  /** Whether a backup of that name exists. */
+  exists(name = 'default'): boolean {
+    return existsSync(join(BACKUPS, name, 'manifest.json'))
+  },
 }
 
 export interface EmailMessage {

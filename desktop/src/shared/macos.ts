@@ -187,6 +187,62 @@ export async function pidOf(ref: AppRef): Promise<number> {
   return jxa<number>(`return procOf(a).unixId()`, ref)
 }
 
+/** The app's process id, or null when it isn't running. */
+export async function runningPid(ref: AppRef): Promise<number | null> {
+  return jxa<number | null>(
+    `const ps = se.processes.whose(a.bundleId ? { bundleIdentifier: a.bundleId } : { name: a.app }); return ps.length ? ps[0].unixId() : null`,
+    ref,
+  )
+}
+
+async function exited(pid: number, timeoutMs: number): Promise<boolean> {
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return true // no such process
+    }
+    if (Date.now() > until) return false
+    await new Promise((r) => setTimeout(r, 200))
+  }
+}
+
+/**
+ * Quit the app the normal way. With force, an app that won't quit (one asking whether
+ * to save) is ended instead, losing what it hadn't saved: what putting a backup back
+ * needs, since the app's copy in memory is the thing being thrown away.
+ */
+export async function quitApp(ref: AppRef, opts: { force?: boolean; timeoutMs?: number } = {}): Promise<'quit' | 'ended' | 'not running'> {
+  const pid = await runningPid(ref)
+  if (pid === null) return 'not running'
+  await jxa(`(a.bundleId ? Application(a.bundleId) : Application(a.app)).quit()`, ref, 8000).catch(() => {})
+  if (await exited(pid, opts.timeoutMs ?? 10_000)) return 'quit'
+  if (!opts.force) throw new Error(`${ref.app} didn't quit (it may be asking whether to save)`)
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    try {
+      process.kill(pid, signal)
+    } catch {
+      // already gone
+    }
+    if (await exited(pid, 5000)) return 'ended'
+  }
+  throw new Error(`${ref.app} could not be ended`)
+}
+
+/** Open the app, or a document (its data file) in it, and wait until it shows a window. */
+export async function openApp(ref: AppRef, path?: string, timeoutMs = 30_000): Promise<AppWindow> {
+  await exec('open', [...(ref.bundleId ? ['-b', ref.bundleId] : ['-a', ref.app]), ...(path ? [path] : [])])
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    const pid = await runningPid(ref)
+    const win = pid === null ? undefined : (await windows(pid))[0]
+    if (win) return win
+    if (Date.now() > until) throw new Error(`${ref.app} didn't open a window within ${timeoutMs / 1000}s`)
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
 /** The app's frontmost normal window, or null. */
 export async function frontWindow(ref: AppRef): Promise<AppWindow | null> {
   const wins = await windows(await pidOf(ref))
