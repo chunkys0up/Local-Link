@@ -13,16 +13,20 @@
  */
 
 import { BrowserWindow, ipcMain, screen, type Display } from 'electron'
+import { execFile } from 'node:child_process'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 import * as mac from '../shared/macos'
 import { JOBS, liveJob } from './jobs'
 import * as ui from './uiActivity'
 
 const PIP = { width: 320, height: 170, margin: 14, opacity: 0.9 }
-// A MacBook's built-in display (notched models) rounds its top corners and keeps the
-// bottom ones square; the frame follows that edge. External displays are square.
-const BUILT_IN_TOP_RADIUS = 10
+// A MacBook's built-in display has rounded corners; the frame follows its edge (external
+// displays are square). The corners are a fixed size on the panel, so they're set in the
+// panel's own pixels and turned into points for the current scaling ("More Space" makes a
+// point fewer pixels). Matched by eye on a 14-inch MacBook Pro (M4 Pro).
+const CORNERS_PX = { top: 40, bottom: 40 }
 const POLL_MS = 1000
 
 const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -30,10 +34,10 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body.paused { --accent: #fbbf24; --glow: rgba(251, 191, 36, 0.4); }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     font: 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-user-select: none; cursor: default; }
-  .frame { position: fixed; inset: 0; border-radius: var(--radius, 0) var(--radius, 0) 0 0; opacity: 0;
+  .frame { position: fixed; inset: 0; border-radius: var(--top-r, 0) var(--top-r, 0) var(--bottom-r, 0) var(--bottom-r, 0); opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
   /* A build or run is going: a quiet reminder. */
-  body.session .frame { opacity: 1; border: 3px solid rgba(255, 125, 54, 0.4); box-shadow: none; }
+  body.session .frame { opacity: 1; border: 4px solid rgba(255, 125, 54, 0.75); box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22); }
   /* Driving an app right now: hands off. */
   body.on .frame { opacity: 1; border: 6px solid var(--accent); box-shadow: inset 0 0 36px 8px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
@@ -63,7 +67,8 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     document.body.classList.toggle('on', s.active)
     document.body.classList.toggle('paused', s.paused)
     document.documentElement.style.setProperty('--top', s.top + 'px')
-    document.documentElement.style.setProperty('--radius', s.radius + 'px')
+    document.documentElement.style.setProperty('--top-r', s.corners.top + 'px')
+    document.documentElement.style.setProperty('--bottom-r', s.corners.bottom + 'px')
     text.innerHTML = s.paused
       ? 'Paused <span class="muted">· waiting for you to let go of the mouse and keyboard</span>'
       : '<b></b> <span class="action"></span> <span class="muted">· hands off</span>'
@@ -161,14 +166,35 @@ async function followApp(app: string): Promise<void> {
   place()
 }
 
+// The built-in panel's width in pixels (e.g. 3024), read once; null until known.
+let panelWidth: number | null = null
+async function readPanelWidth(): Promise<void> {
+  try {
+    const { stdout } = await promisify(execFile)('system_profiler', ['SPDisplaysDataType'], { timeout: 15_000 })
+    // The built-in panel's own section (the GPU's also says "Built-In", but has no resolution).
+    const builtIn = stdout.split(/\n(?=\s{8}\S)/).find((block) => /Resolution:/.test(block) && /Built-in|Internal/i.test(block)) ?? ''
+    const width = Number(/Resolution:\s*(\d+)\s*x\s*\d+/.exec(builtIn)?.[1])
+    if (width > 0) panelWidth = width
+  } catch {
+    // cornerRadii falls back to the display's scale factor
+  }
+}
+
+/** The frame's corner radii in points on this display. */
+function cornerRadii(d: Display): { top: number; bottom: number } {
+  if (!d.internal) return { top: 0, bottom: 0 }
+  const pixelsPerPoint = panelWidth ? panelWidth / d.size.width : d.scaleFactor
+  const points = (px: number) => Math.round((px / pixelsPerPoint) * 10) / 10
+  return { top: points(CORNERS_PX.top), bottom: points(CORNERS_PX.bottom) }
+}
+
 function render(): void {
   const state = ui.current()
   const w = frameWindow()
   const d = display ?? screen.getPrimaryDisplay()
   // Just below the menu bar, clear of a MacBook's camera notch.
   const top = d.workArea.y - d.bounds.y + 10
-  const radius = d.internal ? BUILT_IN_TOP_RADIUS : 0
-  const payload = JSON.stringify({ ...state, session, top, radius })
+  const payload = JSON.stringify({ ...state, session, top, corners: cornerRadii(d) })
   const draw = () => void w.webContents.executeJavaScript(`window.render && window.render(${payload})`).catch(() => {})
   if (w.webContents.isLoading()) w.webContents.once('did-finish-load', draw)
   else draw()
@@ -192,6 +218,7 @@ function render(): void {
 
 export function installOverlay(url: string): void {
   rendererUrl = url
+  void readPanelWidth().then(render)
   ipcMain.on('overlay-hover', (_event, over: boolean) => {
     frame?.setIgnoreMouseEvents(!over, { forward: true })
   })
