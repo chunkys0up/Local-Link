@@ -629,6 +629,12 @@ button.brand-button:hover:not(:disabled) {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
   transition: box-shadow 0.2s;
 }
+.composer {
+  cursor: text; /* all of it types into the prompt (Home focuses the text area) */
+}
+.composer button:not(:disabled) {
+  cursor: pointer;
+}
 .composer:focus-within {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18), 0 0 0 4px rgba(255, 255, 255, 0.16);
 }
@@ -691,7 +697,17 @@ button.chip {
   line-height: 1.3;
   text-align: left;
   white-space: normal;
+  min-width: 0; /* a grid item: may shrink below its text */
   transition: background-color 0.15s, color 0.15s, transform 0.15s;
+}
+/* A narrow window wraps the teaser; past two lines it ends in an ellipsis. */
+button.chip span {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 button.chip:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.21);

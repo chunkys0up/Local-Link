@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
 
 import { api, inElectron, openPrivacy, type Health } from './api'
 import arrow from './assets/arrow-up-right.svg'
@@ -125,6 +125,16 @@ export function Home({ onStart, leaving = false }: { onStart: (prompt: string, f
     }
   }
 
+  // A click anywhere in the composer types into it, not just on the text area: its padding
+  // and the row beside the button too. The caret goes to the end.
+  function focusComposer(e: MouseEvent<HTMLFormElement>) {
+    const text = box.current
+    if (!text || e.target === text || (e.target as HTMLElement).closest('button, a, input')) return
+    e.preventDefault() // keep the focus from leaving the text area
+    text.focus()
+    text.setSelectionRange(text.value.length, text.value.length)
+  }
+
   function suggest(text: string) {
     setPrompt(text)
     box.current?.focus()
@@ -178,7 +188,7 @@ export function Home({ onStart, leaving = false }: { onStart: (prompt: string, f
         ))}
 
         <div className="composer-slot" ref={slot}>
-          <form className="composer" ref={form} onSubmit={submit}>
+          <form className="composer" ref={form} onSubmit={submit} onMouseDown={focusComposer}>
             <textarea
               ref={box}
               value={prompt}
