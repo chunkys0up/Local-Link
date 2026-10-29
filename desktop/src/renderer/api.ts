@@ -108,6 +108,8 @@ export type UserRequest = {
   data: Record<string, unknown>
   status: 'pending' | 'approved' | 'declined'
   feedback: string
+  asked?: number // seconds; absent in logs from before they were recorded
+  answered?: number | null
 }
 
 export type JobStatus = 'running' | 'waiting' | 'passed' | 'failed' | 'error'

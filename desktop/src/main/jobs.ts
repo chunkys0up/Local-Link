@@ -29,6 +29,8 @@ export interface UserRequest {
   data: Record<string, unknown>
   status: 'pending' | 'approved' | 'declined'
   feedback: string
+  asked: number // seconds
+  answered: number | null
 }
 
 const MAX_SHOTS = 60
@@ -72,7 +74,7 @@ export class Job {
 
   /** Ask the user; resolves when they answer in the UI. */
   ask(kind: RequestKind, title: string, reason: string, data: Record<string, unknown> = {}): Promise<UserRequest> {
-    const request: UserRequest = { id: `req_${randomUUID().slice(0, 8)}`, kind, title, reason, data, status: 'pending', feedback: '' }
+    const request: UserRequest = { id: `req_${randomUUID().slice(0, 8)}`, kind, title, reason, data, status: 'pending', feedback: '', asked: Date.now() / 1000, answered: null }
     this.requests.push(request)
     this.status = 'waiting'
     return new Promise((resolve) => {
@@ -89,6 +91,7 @@ export class Job {
     if (request.status !== 'pending') return request
     request.status = approved ? 'approved' : 'declined'
     request.feedback = feedback
+    request.answered = Date.now() / 1000
     this.waiters.get(requestId)?.(request)
     this.waiters.delete(requestId)
     return request
