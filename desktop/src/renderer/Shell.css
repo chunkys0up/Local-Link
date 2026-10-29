@@ -372,6 +372,82 @@ button.brand-button:hover:not(:disabled) {
   to { opacity: 0; transform: translateY(18px) scale(0.96); }
 }
 
+/* The composer's box on its way to becoming the build bar (Flight.tsx animates it). */
+.flight-card {
+  position: fixed;
+  z-index: 49;
+  border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  pointer-events: none;
+  will-change: left, top, width, height;
+}
+
+/* ---------- the build bar ----------
+   While a workflow builds, its progress spans the top of the page: the prompt as a dim
+   caption, then the progress (phase, steps, Pause and Stop). It touches the top edge (over
+   the drag strip, so the window still drags by it) and stays there as the page scrolls. */
+
+.build-bar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin-top: -28px; /* up over the drag strip */
+}
+/* While the send animation flies it's the target, laid out but not shown. Once it lands,
+   it takes over in place: the caption is already where the text landed; the rest fades in. */
+.build-bar-wrap.arriving {
+  visibility: hidden;
+}
+.build-bar-wrap.landing .build-bar-inner > :not(.build-caption) {
+  animation: bar-content-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
+.build-bar-wrap.landing .build-bar > .phases {
+  animation: bar-content-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+@keyframes bar-content-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.build-bar {
+  background: var(--bar-bg, rgba(34, 33, 32, 0.9));
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  -webkit-app-region: drag;
+}
+.build-bar button {
+  -webkit-app-region: no-drag;
+}
+.build-bar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 36px 40px 34px; /* the drag strip's 28px, then room; and air above the phases */
+}
+/* The phases run along the bar's bottom edge, the full width, labels above. */
+.build-bar > .phases {
+  gap: 2px;
+}
+.build-bar > .phases li {
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+.build-bar > .phases .phase-label {
+  padding: 0 10px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.build-bar > .phases .phase-dot {
+  height: 3px;
+  border-radius: 0;
+}
+.build-bar .build-caption {
+  margin: 0 auto;
+}
+
 /* The cards arriving under the landed prompt: a light spring, one after another. */
 .job.springing > * {
   transform-origin: 50% 0;
@@ -904,6 +980,13 @@ button.small-button {
   overflow: hidden;
   background: var(--neutral-soft);
 }
+/* How long the phase took, or has taken so far. */
+.phase-time {
+  margin-left: 6px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
 .phases li.done { color: var(--muted); }
 .phases li.done .phase-dot { background: var(--accent); }
 .phases li.now { color: var(--accent-text); font-weight: 600; }
@@ -976,9 +1059,79 @@ button.small-button {
   background: linear-gradient(180deg, rgba(255, 70, 8, 0.1), var(--surface) 96px);
   animation: hint-in 0.25s ease-out;
 }
+/* Asking for something (allow an app, connect an account, answer a question): solid
+   orange, no border, white text and buttons, so it stands out from the dark cards. The
+   orange is softer than the accent so white text on it stays readable (4.6:1). */
+.request-attention {
+  --attention: #c4512a;
+  border-color: transparent;
+  background: var(--attention);
+  color: #fff;
+}
+.request-attention .muted {
+  color: rgba(255, 255, 255, 0.9);
+}
+.request-attention .request-icon {
+  background: rgba(255, 255, 255, 0.2);
+}
+.request-attention button {
+  background: #fff;
+  color: var(--attention);
+  font-weight: 600;
+}
+.request-attention button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.88);
+}
+.request-attention button.secondary {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.request-attention button.secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+.request-attention button:disabled {
+  opacity: 0.6;
+}
+.request-attention button.option {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 450;
+}
+.request-attention button.option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+.request-attention button.option.chosen,
+.request-attention button.option.chosen:hover:not(:disabled) {
+  background: #fff;
+  color: var(--attention);
+  border-color: transparent;
+}
+.request-attention .feedback {
+  border-color: transparent;
+  background: rgba(0, 0, 0, 0.14);
+  color: #fff;
+}
+.request-attention .feedback::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+.request-attention .feedback:focus {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
 .request-head {
   display: flex;
   gap: 16px;
+}
+.request-count {
+  margin-left: auto;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
 }
 .request-head h2 {
   font-size: 15px;

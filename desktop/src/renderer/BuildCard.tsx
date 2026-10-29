@@ -1,34 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { live, type JobEvent, type JobSnapshot } from './api'
-
-// ---------- the build's phases, worked out from its events ----------
-
-export const BUILD_PHASES = [
-  { id: 'understand', label: 'Understanding' },
-  { id: 'connect', label: 'Connecting' },
-  { id: 'explore', label: 'Exploring' },
-  { id: 'plan', label: 'Planning' },
-  { id: 'write', label: 'Writing' },
-  { id: 'test', label: 'Testing' },
-] as const
-type PhaseId = (typeof BUILD_PHASES)[number]['id']
-
-export function buildPhase(job: JobSnapshot): number {
-  let phase = 0
-  const reach = (id: PhaseId) => (phase = Math.max(phase, BUILD_PHASES.findIndex((p) => p.id === id)))
-  for (const r of job.requests) {
-    if (r.kind === 'app' || r.kind === 'connector') reach('connect')
-    if (r.kind === 'plan') reach(r.status === 'approved' ? 'write' : 'plan')
-  }
-  for (const e of job.events) {
-    if (e.kind === 'request' || e.kind === 'connector') reach('connect')
-    else if (e.kind === 'ui' || /ToolSearch|gmail|mail/i.test(e.label)) reach('explore')
-    else if (e.kind === 'plan') reach('plan')
-    else if (e.kind === 'step' || e.label.startsWith('Test run')) reach('test')
-  }
-  return phase
-}
+import { BUILD_PHASES, buildPhase, phaseDurations } from './phases'
 
 /** A tool call as a person would describe it. */
 export function friendly(e: JobEvent): string {
@@ -85,7 +58,21 @@ export function formatDuration(seconds: number): string {
  * The live build or run at a glance: what it's doing, its phase, the latest screenshot
  * and the last few actions.
  */
-export function BuildCard({ job, onStop, onPause }: { job: JobSnapshot; onStop?: () => void; onPause?: (paused: boolean) => void }) {
+export function BuildCard({
+  job,
+  onStop,
+  onPause,
+  cardRef,
+  bar,
+}: {
+  job: JobSnapshot
+  onStop?: () => void
+  onPause?: (paused: boolean) => void
+  /** The card's element, e.g. for the send animation to land on. */
+  cardRef?: (el: HTMLElement | null) => void
+  /** Shown as the bar across the top of the page (a build), with this caption inside. */
+  bar?: { caption: ReactNode }
+}) {
   const [now, setNow] = useState(() => Date.now() / 1000)
   const running = live(job.status)
   useEffect(() => {
@@ -102,8 +89,23 @@ export function BuildCard({ job, onStop, onPause }: { job: JobSnapshot; onStop?:
   const elapsed = (running ? now : (job.finished ?? now)) - job.started
   const title = jobTitle(job)
 
-  return (
-    <section className={`card build ${running ? 'build-live' : `build-${job.status}`}${running && job.paused ? ' build-paused' : ''}`} aria-live="polite">
+  const state = `${running ? 'build-live' : `build-${job.status}`}${running && job.paused ? ' build-paused' : ''}`
+  const took = job.kind === 'build' ? phaseDurations(job, now) : []
+  const phases = job.kind === 'build' && (
+    <ol className="phases" aria-label="Build progress">
+      {BUILD_PHASES.map((p, i) => (
+        <li key={p.id} className={i < phase || job.status === 'passed' ? 'done' : i === phase && running ? 'now' : ''}>
+          <span className="phase-dot" aria-hidden="true" />
+          <span className="phase-label">
+            {p.label}
+            {took[i] != null && <span className="phase-time">{formatDuration(took[i]!)}</span>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
+  const content = (
+    <>
       <div className="build-top">
         <div className={`blocks${running && !pending.length && !job.paused ? ' blocks-live' : ''}`} aria-hidden="true">
           <span />
@@ -132,18 +134,10 @@ export function BuildCard({ job, onStop, onPause }: { job: JobSnapshot; onStop?:
         )}
       </div>
 
-      {job.kind === 'build' && (
-        <ol className="phases" aria-label="Build progress">
-          {BUILD_PHASES.map((p, i) => (
-            <li key={p.id} className={i < phase || job.status === 'passed' ? 'done' : i === phase && running ? 'now' : ''}>
-              <span className="phase-dot" aria-hidden="true" />
-              {p.label}
-            </li>
-          ))}
-        </ol>
-      )}
+      {!bar && phases}
 
-      {(shot || recent.length > 0) && (
+      {/* Not in the build bar, for now: it would change the bar's height as steps come in. */}
+      {!bar && (shot || recent.length > 0) && (
         <div className="hints">
           {shot && (
             <figure className="hint-shot">
@@ -161,6 +155,24 @@ export function BuildCard({ job, onStop, onPause }: { job: JobSnapshot; onStop?:
           </ul>
         </div>
       )}
+    </>
+  )
+
+  if (bar) {
+    return (
+      <section ref={cardRef} className={`build build-bar ${state}`} aria-live="polite">
+        <div className="build-bar-inner">
+          {bar.caption}
+          {content}
+        </div>
+        {/* The phases are the bar's bottom edge, each label above its segment. */}
+        {phases}
+      </section>
+    )
+  }
+  return (
+    <section ref={cardRef} className={`card build ${state}`} aria-live="polite">
+      {content}
     </section>
   )
 }

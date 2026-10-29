@@ -133,7 +133,7 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
     const url = String(request.data.url ?? '')
     const name = String(request.data.connector ?? '')
     return (
-      <section className="card request" aria-label={request.title}>
+      <section className="card request request-attention" aria-label={request.title}>
         <div className="request-head">
           <span className="request-icon connector" aria-hidden="true">@</span>
           <div>
@@ -162,7 +162,7 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
   }
 
   return (
-    <section className="card request" aria-label={request.title}>
+    <section className="card request request-attention" aria-label={request.title}>
       <div className="request-head">
         <span className="request-icon" aria-hidden="true">⌘</span>
         <div>
@@ -188,31 +188,40 @@ function RequestCard({ request, onAnswer }: { request: UserRequest; onAnswer: (a
 
 type Asked = { index: number; topic: string; question: string; options: string[]; multiSelect?: boolean }
 
-/** droid's AskUser: one or more questions, each with options and room for your own answer. */
+/** droid's AskUser: one or more questions, each with options and room for your own answer, shown one at a time. */
 function QuestionCard({ request, onAnswer, busy }: { request: UserRequest; onAnswer: (approved: boolean, feedback?: string) => Promise<void>; busy: boolean }) {
   const asked = (request.data.questions as Asked[] | undefined) ?? []
   const [answers, setAnswers] = useState<string[]>(() => asked.map(() => ''))
+  const [step, setStep] = useState(0)
   const set = (i: number, value: string) => setAnswers((prev) => prev.map((a, j) => (j === i ? value : a)))
   const toggle = (i: number, option: string) => {
     const picked = answers[i] ? answers[i].split('; ') : []
     set(i, (picked.includes(option) ? picked.filter((p) => p !== option) : [...picked, option]).join('; '))
   }
+  const q = asked[step]
+  const last = step >= asked.length - 1
+  const answered = Boolean(answers[step]?.trim())
   return (
-    <section className="card request" aria-label={request.title}>
+    <section className="card request request-attention" aria-label={request.title}>
       <div className="request-head">
         <span className="request-icon" aria-hidden="true">?</span>
         <div>
           <h2>The builder has {asked.length === 1 ? 'a question' : 'some questions'}</h2>
         </div>
+        {asked.length > 1 && (
+          <span className="request-count" aria-label={`Question ${step + 1} of ${asked.length}`}>
+            {step + 1}/{asked.length}
+          </span>
+        )}
       </div>
-      {asked.map((q, i) => (
+      {q && (
         <div key={q.index} className="question">
           <div className="question-text">{q.question}</div>
           <div className="options">
             {q.options.map((o) => {
-              const chosen = q.multiSelect ? answers[i].split('; ').includes(o) : answers[i] === o
+              const chosen = q.multiSelect ? answers[step].split('; ').includes(o) : answers[step] === o
               return (
-                <button key={o} type="button" className={`option${chosen ? ' chosen' : ''}`} onClick={() => (q.multiSelect ? toggle(i, o) : set(i, o))}>
+                <button key={o} type="button" className={`option${chosen ? ' chosen' : ''}`} onClick={() => (q.multiSelect ? toggle(step, o) : set(step, o))}>
                   {o}
                 </button>
               )
@@ -221,21 +230,37 @@ function QuestionCard({ request, onAnswer, busy }: { request: UserRequest; onAns
           <input
             className="feedback"
             placeholder="Or write your own answer"
-            value={q.options.includes(answers[i]) ? '' : answers[i]}
-            onChange={(e) => set(i, e.target.value)}
+            value={q.options.includes(answers[step]) ? '' : answers[step]}
+            onChange={(e) => set(step, e.target.value)}
           />
         </div>
-      ))}
+      )}
       <div className="request-actions">
         <button type="button" className="secondary" disabled={busy} onClick={() => onAnswer(false)}>
           Skip
         </button>
-        <button type="button" disabled={busy || answers.some((a) => !a.trim())} onClick={() => onAnswer(true, JSON.stringify(answers))}>
-          Answer
-        </button>
+        {step > 0 && (
+          <button type="button" className="secondary" disabled={busy} onClick={() => setStep(step - 1)}>
+            Back
+          </button>
+        )}
+        {last ? (
+          <button type="button" disabled={busy || answers.some((a) => !a.trim())} onClick={() => onAnswer(true, JSON.stringify(answers))}>
+            Answer
+          </button>
+        ) : (
+          <button type="button" disabled={!answered} onClick={() => setStep(step + 1)}>
+            Next
+          </button>
+        )}
       </div>
     </section>
   )
+}
+
+/** A build that has just started and reported nothing yet. */
+function startingJob(workflowId: string): JobSnapshot {
+  return { job_id: '', kind: 'build', workflow_id: workflowId, status: 'running', started: Date.now() / 1000, finished: null, result: null, requests: [], events: [] }
 }
 
 // ---------- activity ----------
@@ -265,6 +290,7 @@ function JobPanel({
   onStop,
   onPause,
   spring = false,
+  withCard = true,
 }: {
   job: JobSnapshot
   onAnswer: (r: UserRequest, approved: boolean, feedback?: string) => Promise<void>
@@ -272,6 +298,8 @@ function JobPanel({
   onPause: (paused: boolean) => Promise<void>
   /** Arriving from the send animation: the cards spring in, one after another. */
   spring?: boolean
+  /** The progress card; a build shows its progress in the bar at the top instead. */
+  withCard?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const running = live(job.status)
@@ -279,7 +307,7 @@ function JobPanel({
 
   return (
     <div className={`job${spring ? ' springing' : ''}`}>
-      <BuildCard job={job} onStop={onStop} onPause={onPause} />
+      {withCard && <BuildCard job={job} onStop={onStop} onPause={onPause} />}
 
       {pending.map((r) => (
         <RequestCard key={r.id} request={r} onAnswer={(approved, feedback) => onAnswer(r, approved, feedback)} />
@@ -336,6 +364,7 @@ export function WorkflowView({
   id,
   intro = null,
   introAnchor,
+  introCard,
   onChanged,
   onDeleted,
 }: {
@@ -344,6 +373,8 @@ export function WorkflowView({
   intro?: Intro | null
   /** The caption the flying prompt lands on. */
   introAnchor?: (el: HTMLElement | null) => void
+  /** The progress card the composer's box becomes. */
+  introCard?: (el: HTMLElement | null) => void
   onChanged: () => void
   onDeleted: () => void
 }) {
@@ -444,101 +475,121 @@ export function WorkflowView({
 
   const lastRun = useMemo(() => wf?.runs.find((r) => r.kind === 'run'), [wf])
 
-  // While it builds, the prompt sits at the top as a dim caption, the title comes after.
+  // While it builds, its progress is a bar across the top of the page, with the prompt in
+  // it as a dim caption; the send animation's box becomes that bar, its text the caption.
   const building = wf ? wf.status === 'building' : intro !== null
-  const caption = building && (
-    <p
-      className="build-caption"
-      ref={introAnchor}
-      style={{ ...(intro ? { width: intro.width } : {}), visibility: intro && !intro.landed ? 'hidden' : undefined }}
-    >
-      {wf?.goal ?? intro?.prompt}
-    </p>
+  // Until the build reports in, the bar shows a fresh "starting" build.
+  const starting = useMemo(() => (building ? startingJob(id) : null), [building, id])
+  const shown = job ?? starting
+  const arriving = intro !== null && !intro.landed
+  const bar = building && shown && (
+    // landing: set once the box has landed, so the contents' fade-in starts then (not while hidden).
+    <div className={`build-bar-wrap${arriving ? ' arriving' : ''}${intro?.landed ? ' landing' : ''}`}>
+      <BuildCard
+        job={shown}
+        onStop={stop}
+        onPause={pause}
+        cardRef={introCard}
+        bar={{
+          caption: (
+            <p className="build-caption" ref={introAnchor} style={intro ? { width: intro.width } : undefined}>
+              {wf?.goal ?? intro?.prompt}
+            </p>
+          ),
+        }}
+      />
+    </div>
   )
 
   if (!wf) {
     return (
-      <div className="page workflow">
-        {caption}
-        {error ? <p className="request-error">{error}</p> : !intro && <p className="muted">Loading…</p>}
-      </div>
+      <>
+        {bar}
+        <div className="page workflow">
+          {error ? <p className="request-error">{error}</p> : !intro && <p className="muted">Loading…</p>}
+        </div>
+      </>
     )
   }
 
   const busy = live(job?.status)
   return (
-    <div className={`page workflow${building ? ' is-building' : ''}`}>
-      {caption}
-      {!building && (
-      <header className="view-head">
-        <div className="view-title">
-          <h1>{wf.title}</h1>
-          <p className="muted goal">“{wf.goal}”</p>
-        </div>
-        <div className="view-actions">
-          <span className={`badge badge-wf-${wf.status}`} role="status">
-            <span className="badge-dot" aria-hidden="true" />
-            {busy && job?.kind === 'run' ? 'Running' : STATUS_LABEL[wf.status]}
-          </span>
-          {wf.status !== 'building' && wf.script && (
-            <button type="button" onClick={run} disabled={busy}>
-              {busy && job?.kind === 'run' && <span className="spinner" aria-hidden="true" />}
-              Run now
-            </button>
-          )}
-        </div>
-      </header>
-      )}
-
-      {error && <p className="request-error">{error}</p>}
-
-      {job && (!intro || intro.landed) && <JobPanel job={job} onAnswer={answer} onStop={stop} onPause={pause} spring={intro !== null} />}
-
-      {wf.status !== 'building' && (
-        <div className="wf-grid">
-          <section className="card">
-            <div className="card-head">
-              <h2>How it works</h2>
-              <span className="muted small">
-                {[...wf.apps.map((a) => a.app), ...wf.connectors.map((c) => c[0].toUpperCase() + c.slice(1))].join(' · ')}
-              </span>
-            </div>
-            {wf.plan ? <PlanSteps plan={wf.plan} /> : <p className="muted small">{wf.note || 'No plan was recorded.'}</p>}
-            {wf.script && (
-              <div className="script">
-                <button type="button" className="link" onClick={() => setShowScript(!showScript)}>
-                  {showScript ? 'Hide the script' : 'Show the script'}
-                </button>
-                {showScript && <pre className="code">{wf.script}</pre>}
-              </div>
-            )}
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Runs</h2>
-              <span className="muted small">
-                {lastRun ? `Last run ${when(lastRun.started)}` : 'Not run yet'}
-                {wf.heals > 0 && ` · healed itself ${wf.heals}×`}
-              </span>
-            </div>
-            {wf.runs.length === 0 ? (
-              <p className="muted small">No runs yet.</p>
-            ) : (
-              <ul className="runs">
-                {wf.runs.map((r) => (
-                  <RunRow key={r.job_id} wfId={wf.id} run={r} />
-                ))}
-              </ul>
-            )}
-            {!busy && (
-              <button type="button" className="link danger" onClick={remove}>
-                Delete workflow
+    <>
+      {bar}
+      <div className={`page workflow${building ? ' is-building' : ''}`}>
+        {!building && (
+        <header className="view-head">
+          <div className="view-title">
+            <h1>{wf.title}</h1>
+            <p className="muted goal">“{wf.goal}”</p>
+          </div>
+          <div className="view-actions">
+            <span className={`badge badge-wf-${wf.status}`} role="status">
+              <span className="badge-dot" aria-hidden="true" />
+              {busy && job?.kind === 'run' ? 'Running' : STATUS_LABEL[wf.status]}
+            </span>
+            {wf.status !== 'building' && wf.script && (
+              <button type="button" onClick={run} disabled={busy}>
+                {busy && job?.kind === 'run' && <span className="spinner" aria-hidden="true" />}
+                Run now
               </button>
             )}
-          </section>
-        </div>
-      )}
-    </div>
+          </div>
+        </header>
+        )}
+
+        {error && <p className="request-error">{error}</p>}
+
+        {shown && !arriving && (
+          <JobPanel job={shown} onAnswer={answer} onStop={stop} onPause={pause} spring={intro !== null} withCard={!building} />
+        )}
+
+        {wf.status !== 'building' && (
+          <div className="wf-grid">
+            <section className="card">
+              <div className="card-head">
+                <h2>How it works</h2>
+                <span className="muted small">
+                  {[...wf.apps.map((a) => a.app), ...wf.connectors.map((c) => c[0].toUpperCase() + c.slice(1))].join(' · ')}
+                </span>
+              </div>
+              {wf.plan ? <PlanSteps plan={wf.plan} /> : <p className="muted small">{wf.note || 'No plan was recorded.'}</p>}
+              {wf.script && (
+                <div className="script">
+                  <button type="button" className="link" onClick={() => setShowScript(!showScript)}>
+                    {showScript ? 'Hide the script' : 'Show the script'}
+                  </button>
+                  {showScript && <pre className="code">{wf.script}</pre>}
+                </div>
+              )}
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h2>Runs</h2>
+                <span className="muted small">
+                  {lastRun ? `Last run ${when(lastRun.started)}` : 'Not run yet'}
+                  {wf.heals > 0 && ` · healed itself ${wf.heals}×`}
+                </span>
+              </div>
+              {wf.runs.length === 0 ? (
+                <p className="muted small">No runs yet.</p>
+              ) : (
+                <ul className="runs">
+                  {wf.runs.map((r) => (
+                    <RunRow key={r.job_id} wfId={wf.id} run={r} />
+                  ))}
+                </ul>
+              )}
+              {!busy && (
+                <button type="button" className="link danger" onClick={remove}>
+                  Delete workflow
+                </button>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+    </>
   )
 }

@@ -111,7 +111,8 @@ export default function App() {
   // Sending a prompt: the home screen fades out around it while it flies to the build page.
   const [intro, setIntro] = useState<Intro | null>(null)
   const [leaving, setLeaving] = useState(false)
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null) // the caption the text lands on
+  const [cardAnchor, setCardAnchor] = useState<HTMLElement | null>(null) // the progress card the box becomes
 
   const loadWorkflows = useCallback(async () => {
     try {
@@ -238,6 +239,7 @@ export default function App() {
             id={view.id}
             intro={intro?.id === view.id ? intro : null}
             introAnchor={setAnchor}
+            introCard={setCardAnchor}
             onChanged={loadWorkflows}
             onDeleted={() => {
               go({ name: 'home' })
@@ -248,8 +250,8 @@ export default function App() {
         {view.name === 'data' && <DataView />}
       </main>
 
-      {intro && !intro.landed && anchor && view.name === 'workflow' && view.id === intro.id && (
-        <PromptFlight intro={intro} anchor={anchor} onLanded={() => setIntro((i) => (i ? { ...i, landed: true } : i))} />
+      {intro && !intro.landed && anchor && cardAnchor && view.name === 'workflow' && view.id === intro.id && (
+        <PromptFlight intro={intro} anchor={anchor} card={cardAnchor} onLanded={() => setIntro((i) => (i ? { ...i, landed: true } : i))} />
       )}
 
 
