@@ -493,7 +493,7 @@ export function WorkflowView({
         bar={{
           caption: (
             <p className="build-caption" ref={introAnchor} style={intro ? { width: intro.width } : undefined}>
-              {wf?.goal ?? intro?.prompt}
+              “{wf?.goal ?? intro?.prompt}”
             </p>
           ),
         }}

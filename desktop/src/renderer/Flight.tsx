@@ -99,7 +99,8 @@ export function PromptFlight({ intro, anchor, card, onLanded }: { intro: Intro; 
     <>
       <div className="flight-card" ref={box} aria-hidden="true" />
       <div className="flight" ref={text} aria-hidden="true">
-        <div className="flight-text">{intro.prompt}</div>
+        {/* Quoted like the caption it lands on, so it wraps the same all the way up. */}
+        <div className="flight-text">“{intro.prompt}”</div>
       </div>
     </>
   )
