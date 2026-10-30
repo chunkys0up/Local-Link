@@ -570,18 +570,13 @@ button.brand-button:hover:not(:disabled) {
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  /* Settling back is slow, so the pointer leaves a fading trail across the grid. */
-  transition:
-    transform 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 1.6s ease-out;
+  /* Dimming back is slow, so the pointer leaves a fading trail across the grid. */
+  transition: background-color 1.6s ease-out;
 }
-/* Under the pointer: lifted and brighter, quickly but not instantly. */
+/* Under the pointer: brighter, quickly but not instantly. */
 .tile:hover {
-  transform: translateY(-2px);
   background-color: rgba(255, 255, 255, 0.15);
-  transition:
-    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 0.25s ease-out;
+  transition: background-color 0.25s ease-out;
 }
 /* Each tile softly lights up now and then, like bits blinking: its own speed, start
    and brightness come from Home, and it only fades, never snaps. */
