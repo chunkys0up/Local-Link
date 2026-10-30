@@ -50,6 +50,8 @@ export class Job {
   private wasStopped = false
   /** Paused by the user: the agent holds its next action until resumed. Builds only. */
   paused = false
+  /** When it was paused and resumed (seconds; the end is null while still paused), so timers can leave that out. */
+  pauses: [number, number | null][] = []
   private resumers: (() => void)[] = []
 
   constructor(
@@ -115,14 +117,23 @@ export class Job {
   pause(): void {
     if (this.finished !== null || this.paused || this.kind !== 'build') return
     this.paused = true
+    this.pauses.push([Date.now() / 1000, null])
     this.emit('info', 'Paused', 'the builder waits before its next action until you resume')
+    jobsChanged()
   }
 
   resume(): void {
     if (!this.paused) return
     this.paused = false
+    this.endPause()
     if (this.finished === null) this.emit('info', 'Resumed', 'the builder carries on')
     for (const go of this.resumers.splice(0)) go()
+    jobsChanged()
+  }
+
+  private endPause(): void {
+    const open = this.pauses[this.pauses.length - 1]
+    if (open && open[1] === null) open[1] = Date.now() / 1000
   }
 
   /** Resolves at once, or when the job is resumed (or stopped). */
@@ -133,6 +144,7 @@ export class Job {
     if (this.finished !== null) return
     this.wasStopped = true
     this.paused = false
+    this.endPause()
     for (const go of this.resumers.splice(0)) go()
     this.emit('fail', 'Stopped', `you stopped this ${this.kind === 'build' ? 'build' : 'run'}`)
     this.finish('failed', { error: 'Stopped by you' })
@@ -151,6 +163,7 @@ export class Job {
     this.result = result
     this.finished = Date.now() / 1000
     this.cancelRequests()
+    jobsChanged()
   }
 
   snapshot(after = 0) {
@@ -160,6 +173,7 @@ export class Job {
       workflow_id: this.workflowId,
       status: this.status,
       paused: this.paused,
+      pauses: this.pauses,
       started: this.started,
       finished: this.finished,
       result: this.result,
@@ -199,7 +213,28 @@ export function needAttention(job: Job, why: string): void {
 export function newJob(kind: JobKind, workflowId: string): Job {
   const job = new Job(kind, workflowId)
   JOBS.set(job.id, job)
+  jobsChanged()
   return job
+}
+
+// ---------- telling others a job started, ended, or was paused or resumed ----------
+
+const changeListeners = new Set<() => void>()
+
+/** Called whenever a job starts, finishes (or is stopped), or is paused or resumed. */
+export function onJobsChange(listener: () => void): () => void {
+  changeListeners.add(listener)
+  return () => changeListeners.delete(listener)
+}
+
+function jobsChanged(): void {
+  for (const listener of changeListeners) {
+    try {
+      listener()
+    } catch {
+      // one listener failing doesn't stop the job or the others
+    }
+  }
 }
 
 export function anyRunning(): boolean {

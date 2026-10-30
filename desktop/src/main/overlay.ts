@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import * as mac from '../shared/macos'
-import { JOBS, liveJob } from './jobs'
+import { JOBS, liveJob, onJobsChange } from './jobs'
 import * as ui from './uiActivity'
 
 const PIP = { width: 320, height: 170, margin: 14, opacity: 0.9 }
@@ -26,8 +26,7 @@ const PIP = { width: 320, height: 170, margin: 14, opacity: 0.9 }
 // displays are square). The corners are a fixed size on the panel, so they're set in the
 // panel's own pixels and turned into points for the current scaling ("More Space" makes a
 // point fewer pixels). Matched by eye on a 14-inch MacBook Pro (M4 Pro).
-const CORNERS_PX = { top: 40, bottom: 40 }
-const POLL_MS = 1000
+const CORNERS_PX = { top: 40, bottom: 30 } // its bottom corners are tighter than its top ones
 
 const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   :root { --accent: #ff4608; --glow: rgba(255, 70, 8, 0.45); }
@@ -49,7 +48,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
     transition: opacity .3s; animation: orbit 8s linear infinite; }
   body.session .frame { opacity: 1; box-shadow: inset 0 0 22px 8px rgba(255, 70, 8, 0.22);
-    animation: frame-in 3.1s linear(0, 0.0272, 0.0995, 0.2033, 0.3264, 0.4582, 0.5898, 0.7145, 0.8272, 0.9245, 1.0048, 1.0675, 1.1131, 1.1429, 1.1588, 1.163, 1.1577, 1.1453, 1.128, 1.1077, 1.0862, 1.0648, 1.0446, 1.0265, 1.0109, 0.9981, 0.9881, 0.981, 0.9763, 0.974, 0.9735, 0.9744, 0.9766, 0.9795, 0.9828, 0.9863, 0.9898, 0.993, 0.996, 0.9985, 1.0005, 1.0021, 1.0032, 1.0039, 1) both, frame-fade 1s cubic-bezier(0.33, 1, 0.68, 1) .45s both; }
+    animation: frame-in 3.1s linear(0, 0.0272, 0.0995, 0.2033, 0.3264, 0.4582, 0.5898, 0.7145, 0.8272, 0.9245, 1.0048, 1.0675, 1.1131, 1.1429, 1.1588, 1.163, 1.1577, 1.1453, 1.128, 1.1077, 1.0862, 1.0648, 1.0446, 1.0265, 1.0109, 0.9981, 0.9881, 0.981, 0.9763, 0.974, 0.9735, 0.9744, 0.9766, 0.9795, 0.9828, 0.9863, 0.9898, 0.993, 0.996, 0.9985, 1.0005, 1.0021, 1.0032, 1.0039, 1) both, frame-fade 1s cubic-bezier(0.33, 1, 0.68, 1) .45s backwards; }
   /* Appearing, it closes in from just past the screen's edges (the same 12px on every side,
      not a scale, which would reach further out on the long sides) on a slow, heavy spring,
      about 2px inward (its peak at 1.05s) and back, fading in from the moment its ring comes on screen (0.45s, the
@@ -62,6 +61,18 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body.session .frame::before { opacity: 1; animation: orbit 8s linear infinite, glow-in 3s ease-in-out both; }
   @keyframes glow-in { 0%, 35% { --glow-r: 9000px; } }
   body.on .frame::before { opacity: 0; }
+  /* The build is paused: the glow stops where it is and fades away, leaving the plain ring
+     (::after, under it), and the whole frame dims a little; unpausing reverses both, the glow
+     moving on from where it stopped. The plain ring only shows while paused, so it doesn't
+     brighten the glowing ring's dim stretches. */
+  .frame::before { z-index: 1; }
+  .frame::after { content: ''; position: absolute; inset: 0; padding: 13px; border-radius: inherit; z-index: 0;
+    background: rgba(255, 110, 40, 0.3); opacity: 0; transition: opacity .8s ease-in-out;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  body.held .frame::after { opacity: 1; }
+  body.session .frame, body.session .frame::before { transition: opacity .8s ease-in-out, border-color .25s, border-width .25s, box-shadow .8s ease-in-out; }
+  body.held .frame { opacity: .7; box-shadow: inset 0 0 22px 8px rgba(255, 70, 8, 0.12); }
+  body.held .frame::before { opacity: 0; animation-play-state: paused; }
   /* Driving an app right now: hands off. */
   body.on .frame { opacity: 1; border: 14px solid var(--accent); box-shadow: inset 0 0 36px 16px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
@@ -110,6 +121,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     document.body.classList.toggle('session', s.session)
     document.body.classList.toggle('on', s.active)
     document.body.classList.toggle('paused', s.paused)
+    document.body.classList.toggle('held', s.held)
     document.documentElement.style.setProperty('--top', s.top + 'px')
     document.documentElement.style.setProperty('--top-r', s.corners.top + 'px')
     document.documentElement.style.setProperty('--bottom-r', s.corners.bottom + 'px')
@@ -144,6 +156,7 @@ let pip: BrowserWindow | null = null
 let rendererUrl = ''
 let display: Display | null = null
 let session = false
+let held = false // the live build is paused
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 function floating(win: BrowserWindow): BrowserWindow {
@@ -238,7 +251,7 @@ function render(): void {
   const d = display ?? screen.getPrimaryDisplay()
   // Just below the menu bar, clear of a MacBook's camera notch.
   const top = d.workArea.y - d.bounds.y + 10
-  const payload = JSON.stringify({ ...state, session, top, corners: cornerRadii(d) })
+  const payload = JSON.stringify({ ...state, session, held, top, corners: cornerRadii(d) })
   const draw = () => void w.webContents.executeJavaScript(`window.render && window.render(${payload})`).catch(() => {})
   if (w.webContents.isLoading()) w.webContents.once('did-finish-load', draw)
   else draw()
@@ -277,12 +290,18 @@ export function installOverlay(url: string): void {
     lastApp = state.active ? state.app : ''
     render()
   })
-  // Builds and runs live in the engine; check for one each second.
-  setInterval(() => {
-    const now = liveJob() !== null
-    if (now === session) return
+  // Builds and runs live in the engine, in this process: it says when one starts, ends, or is
+  // paused or resumed, and the frame follows at once.
+  const syncJobs = () => {
+    const live = liveJob()
+    const now = live !== null
+    const pausedNow = live?.paused ?? false
+    if (now === session && pausedNow === held) return
     session = now
+    held = pausedNow
     if (!session) display = null
     render()
-  }, POLL_MS)
+  }
+  onJobsChange(syncJobs)
+  syncJobs()
 }

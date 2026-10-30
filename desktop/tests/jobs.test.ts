@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { Job } from '../src/main/jobs'
+import { Job, newJob, onJobsChange } from '../src/main/jobs'
 
 test('a question waits for the answer and the job waits with it', async () => {
   const job = new Job('build', 'wf_test')
@@ -93,4 +93,28 @@ test('a paused build holds its next action until resumed, and stopping lets it g
   const run = new Job('run', 'wf_pause')
   run.pause()
   expect(run.paused).toBe(false)
+})
+
+test('jobs say when one starts, is paused or resumed, and finishes', async () => {
+  const heard: string[] = []
+  const off = onJobsChange(() => heard.push('changed'))
+  const job = newJob('build', 'wf_listen')
+  job.pause()
+  job.resume()
+  job.finish('passed')
+  job.finish('failed') // already finished: nothing new
+  off()
+  newJob('build', 'wf_listen').stop()
+  expect(heard).toEqual(['changed', 'changed', 'changed', 'changed'])
+})
+
+test('a job records when it was paused and resumed', () => {
+  const job = new Job('build', 'wf_pauses')
+  job.pause()
+  expect(job.snapshot().pauses).toHaveLength(1)
+  expect(job.snapshot().pauses[0][1]).toBeNull() // still paused
+  job.resume()
+  const [start, end] = job.snapshot().pauses[0]
+  expect(end).not.toBeNull()
+  expect(end!).toBeGreaterThanOrEqual(start)
 })
