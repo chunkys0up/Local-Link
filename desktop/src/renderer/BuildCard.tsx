@@ -115,7 +115,7 @@ export function BuildCard({
         <div className="build-text">
           <h2>{title}</h2>
           <p className="muted small">
-            {latest ? friendly(latest) : 'Starting the agent…'} · <span className="mono">{formatDuration(elapsed)}</span>
+            {latest ? friendly(latest) : 'Starting the agent…'} · <span className="timer">{formatDuration(elapsed)}</span>
           </p>
         </div>
         {running && (onStop || onPause) && (

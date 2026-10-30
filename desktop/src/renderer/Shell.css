@@ -376,11 +376,26 @@ button.brand-button:hover:not(:disabled) {
 .flight-card {
   position: fixed;
   z-index: 49;
+  overflow: hidden; /* its rounded corners clip the segments along its bottom */
   border-radius: var(--radius);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
   pointer-events: none;
   will-change: left, top, width, height;
+}
+
+/* The flying box is also a .build-bar, so its progress row lays out like the real one;
+   it sits on the box's bottom edge. */
+.flight-card.build-bar {
+  position: fixed; /* over .build-bar's position: relative */
+  -webkit-app-region: no-drag; /* only the real bar drags the window */
+}
+.flight-card.build-bar > .phases {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
 }
 
 /* ---------- the build bar ----------
@@ -399,17 +414,37 @@ button.brand-button:hover:not(:disabled) {
 .build-bar-wrap.arriving {
   visibility: hidden;
 }
-.build-bar-wrap.landing .build-bar-inner > :not(.build-caption) {
-  animation: bar-content-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
-}
-.build-bar-wrap.landing .build-bar > .phases {
-  animation: bar-content-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+/* Once the bar has settled, its title row and phase labels fade in together (the flying box
+   carried the segments in already, to the same place). */
+.build-bar-wrap.landing .build-top,
+.build-bar-wrap.landing .build-bar > .phases .phase-label {
+  animation: bar-content-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes bar-content-in {
   from { opacity: 0; transform: translateY(6px); }
 }
+/* ...and the segments' orange grows in from the left: the current phase's sweep starts
+   over from the segment's beginning (a fresh copy of phase-run, so it restarts rather than
+   carrying on mid-sweep), and finished ones fill left to right. */
+.build-bar-wrap.landing .build-bar > .phases li.now .phase-dot::after {
+  animation-name: phase-run-in;
+}
+@keyframes phase-run-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+.build-bar > .phases li.done .phase-dot {
+  background: linear-gradient(var(--accent), var(--accent)) left / 100% 100% no-repeat, var(--neutral-soft);
+}
+.build-bar-wrap.landing .build-bar > .phases li.done .phase-dot {
+  animation: bar-fill-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes bar-fill-grow {
+  from { background-size: 0% 100%, auto; }
+}
 .build-bar {
-  background: var(--bar-bg, rgba(34, 33, 32, 0.9));
+  background: var(--bar-bg, rgba(34, 33, 32, 0.62)); /* glass: cards gliding in show through it */
+  position: relative;
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
   -webkit-app-region: drag;
@@ -425,8 +460,28 @@ button.brand-button:hover:not(:disabled) {
   margin: 0 auto;
   padding: 36px 40px 34px; /* the drag strip's 28px, then room; and air above the phases */
 }
-/* The phases run along the bar's bottom edge, the full width, labels above. */
+/* The bar's bottom border: the progress segments' grey, the full width; the segments sit
+   on it, as wide as the cards. */
+.build-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--neutral-soft);
+  pointer-events: none;
+}
 .build-bar > .phases {
+  position: relative;
+  z-index: 1;
+}
+/* The phases run along the bar's bottom edge, labels above, as wide as the cards below it
+   (the page's 1180px less its 40px sides). */
+.build-bar > .phases {
+  --cards-width: min(1100px, calc(100% - 80px));
+  width: var(--cards-width);
+  margin: 0 auto;
   gap: 2px;
 }
 .build-bar > .phases li {
@@ -448,22 +503,23 @@ button.brand-button:hover:not(:disabled) {
   margin: 0 auto;
 }
 
-/* The cards arriving under the landed prompt: a light spring, one after another. */
+/* The cards under the build bar: they drop in from the very top of the screen, behind the
+   bar (WorkflowView's dropIn); newer, higher cards stay in front as the others make room. */
 .job.springing > * {
+  position: relative;
   transform-origin: 50% 0;
-  animation: spring-in 0.75s linear(0, 0.0423, 0.1447, 0.2771, 0.4183, 0.5539, 0.6753, 0.7781, 0.8609, 0.9246, 0.971, 1.0028, 1.0228, 1.0338, 1.0381, 1.0378, 1.0347, 1.0299, 1.0246, 1.0192, 1.0143, 1.0101, 1.0066, 1.0038, 1.0018, 1.0003, 0.9994, 0.9988, 0.9986, 0.9985, 1) both;
 }
-.job.springing > :nth-child(2) { animation-delay: 0.08s; }
-.job.springing > :nth-child(3) { animation-delay: 0.16s; }
-.job.springing > :nth-child(n + 4) { animation-delay: 0.24s; }
-@keyframes spring-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.96); }
-  to { opacity: 1; transform: none; }
-}
+.job.springing > :nth-child(1) { z-index: 3; }
+.job.springing > :nth-child(2) { z-index: 2; }
+.job.springing > :nth-child(3) { z-index: 1; }
 .main > .drag {
   position: sticky;
   top: 0;
   z-index: 5;
+}
+/* Room between the build bar and the cards under it. */
+.main > .build-bar-wrap + .page {
+  padding-top: 28px;
 }
 .main > .page {
   width: 100%;
@@ -992,10 +1048,16 @@ button.small-button {
   background: var(--neutral-soft);
 }
 /* How long the phase took, or has taken so far. */
+/* Timers (the build's under its title, each phase's): Inter's plain zero (no monospace
+   font's slashed one), its digits all one width so they don't jiggle as they tick. */
+.timer,
+.phase-time {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+}
 .phase-time {
   margin-left: 6px;
   font-weight: 400;
-  font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
 .phases li.done { color: var(--muted); }

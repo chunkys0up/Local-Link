@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef } from 'react'
 
+import { BUILD_PHASES } from './phases'
+
 /**
  * The send animation, two layers from where the composer sits:
  * - the prompt's text glides to the top of the build page and shrinks, dimming until it
@@ -41,6 +43,7 @@ const GLIDE = { duration: 860, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: '
 export function PromptFlight({ intro, anchor, card, onLanded }: { intro: Intro; anchor: HTMLElement; card: HTMLElement; onLanded: () => void }) {
   const text = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
+  const edge = useRef<HTMLOListElement>(null)
 
   useLayoutEffect(() => {
     const words = text.current
@@ -80,24 +83,40 @@ export function PromptFlight({ intro, anchor, card, onLanded }: { intro: Intro; 
       [
         { backgroundColor: 'rgb(255, 255, 255)', boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.21), 0 18px 50px rgba(0, 0, 0, 0.18)' },
         { offset: 0.5, backgroundColor: 'rgba(120, 110, 104, 0.9)', boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 18px 50px rgba(0, 0, 0, 0)' },
-        { backgroundColor: 'rgba(34, 33, 32, 0.9)', boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0), 0 18px 50px rgba(0, 0, 0, 0)' },
+        { backgroundColor: 'rgba(34, 33, 32, 0.62)', boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0), 0 18px 50px rgba(0, 0, 0, 0)' },
       ],
       { duration: 450, easing: 'ease-out', fill: 'both' },
     )
     // The bar is square: the corners stay round until the box is nearly there (85% of the
     // way, on the same easing as the glide), then square off as it meets the edges.
     const square = shell.animate([{ borderRadius: '12px' }, { offset: 0.85, borderRadius: '12px' }, { borderRadius: '0px' }], GLIDE)
+    // The bar's progress segments along the box's bottom edge, plain grey, coming in as it
+    // darkens and spreading out as it widens; the real ones land in the same place. (Their
+    // orange, the labels and the bar's title row come in once the bar has settled.)
+    const segments = edge.current?.animate([{ opacity: 0 }, { offset: 0.3, opacity: 0 }, { opacity: 1 }], { duration: 450, easing: 'ease-out', fill: 'both' })
 
     Promise.all([glide.finished, reshape.finished]).then(onLanded, () => {})
     return () => {
-      for (const a of [glide, dim, reshape, darken, square]) a.cancel()
+      for (const a of [glide, dim, reshape, darken, square, segments]) a?.cancel()
     }
     // Runs once per flight: the anchors and intro are fixed for its duration.
   }, [])
 
   return (
     <>
-      <div className="flight-card" ref={box} aria-hidden="true" />
+      {/* Styled as the build bar, so its progress row lays out the same; just the grey segments show. */}
+      <div className="flight-card build-bar" ref={box} aria-hidden="true">
+        <ol className="phases" ref={edge}>
+          {BUILD_PHASES.map((p) => (
+            <li key={p.id}>
+              <span className="phase-dot" />
+              <span className="phase-label" style={{ visibility: 'hidden' }}>
+                {p.label}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
       <div className="flight" ref={text} aria-hidden="true">
         {/* Quoted like the caption it lands on, so it wraps the same all the way up. */}
         <div className="flight-text">“{intro.prompt}”</div>

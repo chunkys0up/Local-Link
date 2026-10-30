@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { BuildCard, formatDuration } from './BuildCard'
-import type { Intro } from './Flight'
+import { prefersReducedMotion, type Intro } from './Flight'
 import { api, live, openExternal, type JobEvent, type JobSnapshot, type Plan, type RunSummary, type UserRequest, type Workflow } from './api'
 
 const POLL_MS = 900
@@ -258,6 +258,22 @@ function QuestionCard({ request, onAnswer, busy }: { request: UserRequest; onAns
   )
 }
 
+// A soft spring: about 1.5% past, then settling.
+const DROP_SPRING =
+  'linear(0, 0.0427, 0.1438, 0.2719, 0.4062, 0.5337, 0.647, 0.7429, 0.8208, 0.8817, 0.9276, 0.9609, 0.984, 0.9991, 1.0083, 1.0131, 1.015, 1.015, 1.0137, 1.0119, 1.0099, 1.0079, 1.0061, 1.0045, 1.0032, 1.0022, 1.0014, 1.0008, 1.0004, 1.0001, 1)'
+
+/** A card arriving under the build bar: from `from` px above, behind the bar, to its place. */
+function dropIn(card: HTMLElement, from: number, delay: number): void {
+  card.animate(
+    [
+      { transform: `translateY(${from}px) scale(0.96)`, opacity: 0 },
+      { offset: 0.06, opacity: 1 },
+      { transform: 'none', opacity: 1 },
+    ],
+    { duration: 900, delay, easing: DROP_SPRING, fill: 'backwards' },
+  )
+}
+
 /** A build that has just started and reported nothing yet. */
 function startingJob(workflowId: string): JobSnapshot {
   return { job_id: '', kind: 'build', workflow_id: workflowId, status: 'running', started: Date.now() / 1000, finished: null, result: null, requests: [], events: [] }
@@ -296,25 +312,66 @@ function JobPanel({
   onAnswer: (r: UserRequest, approved: boolean, feedback?: string) => Promise<void>
   onStop: () => Promise<void>
   onPause: (paused: boolean) => Promise<void>
-  /** Arriving from the send animation: the cards spring in, one after another. */
+  /** While a workflow builds: new cards drop in at the top, under the bar, one after another. */
   spring?: boolean
   /** The progress card; a build shows its progress in the bar at the top instead. */
   withCard?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const running = live(job.status)
-  const pending = job.requests.filter((r) => r.status === 'pending')
+  // Newest first: a new card arrives at the top and the others make room below it.
+  const pending = job.requests.filter((r) => r.status === 'pending').reverse()
+
+  // When a card arrives or leaves, the ones that move glide to their new place (FLIP: from
+  // where they were to where they are now) rather than jumping. While building, a new card
+  // drops in from the very top of the screen, behind the bar, like an iOS notification.
+  const list = useRef<HTMLDivElement>(null)
+  const tops = useRef(new Map<string, number>())
+  useLayoutEffect(() => {
+    const el = list.current
+    if (!el) return
+    const motion = !prefersReducedMotion()
+    const parent = (el.offsetParent as HTMLElement | null) ?? document.body
+    const parentTop = parent.getBoundingClientRect().top - parent.scrollTop
+    const next = new Map<string, number>()
+    let arriving = 0
+    for (const child of Array.from(el.children) as HTMLElement[]) {
+      const key = child.dataset.key
+      if (!key) continue
+      const top = child.offsetTop // where it lands; its own transforms don't change this
+      next.set(key, top)
+      const before = tops.current.get(key)
+      if (!motion) continue
+      if (before === undefined) {
+        // From the top of the screen (how far up that is from where it lands), a little
+        // small, growing as it glides down, on one soft spring; one after another.
+        if (spring) dropIn(child, -(parentTop + top), arriving++ * 80)
+      } else if (before !== top) {
+        child.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], {
+          duration: 500,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        })
+      }
+    }
+    tops.current = next
+  })
 
   return (
-    <div className={`job${spring ? ' springing' : ''}`}>
-      {withCard && <BuildCard job={job} onStop={onStop} onPause={onPause} />}
+    <div className={`job${spring ? ' springing' : ''}`} ref={list}>
+      {withCard && (
+        <div data-key="progress">
+          <BuildCard job={job} onStop={onStop} onPause={onPause} />
+        </div>
+      )}
 
       {pending.map((r) => (
-        <RequestCard key={r.id} request={r} onAnswer={(approved, feedback) => onAnswer(r, approved, feedback)} />
+        <div key={r.id} data-key={r.id}>
+          <RequestCard request={r} onAnswer={(approved, feedback) => onAnswer(r, approved, feedback)} />
+        </div>
       ))}
 
       {!running && job.result?.error != null && (
-        <section className={`alert${job.result.review ? "" : " alert-error"}`} role="alert">
+        <section data-key="result"  className={`alert${job.result.review ? "" : " alert-error"}`} role="alert">
           <div className="alert-body">
             <h2>{job.result.review ? 'Needs your review' : job.kind === 'build' ? 'The build needs a human' : 'This run needs a human'}</h2>
             {job.result.review === true && <p className="small">The workflow stopped on purpose: this needs your decision, so nothing was healed or retried.</p>}
@@ -323,7 +380,7 @@ function JobPanel({
         </section>
       )}
 
-      <section className={`card events${open ? ' open' : ''}`} aria-label="Activity">
+      <section data-key="activity" className={`card events${open ? ' open' : ''}`} aria-label="Activity">
         <button type="button" className="events-bar" aria-expanded={open} onClick={() => setOpen(!open)}>
           <span className="events-bar-name">Activity</span>
           <span className="events-bar-latest muted">{job.events.length} events</span>
@@ -501,11 +558,18 @@ export function WorkflowView({
     </div>
   )
 
+  // The cards under the bar spring in when it settles (with its progress starting), even if
+  // the workflow itself hasn't loaded yet.
+  const panel = shown && !arriving && (
+    <JobPanel job={shown} onAnswer={answer} onStop={stop} onPause={pause} spring={building} withCard={!building} />
+  )
+
   if (!wf) {
     return (
       <>
         {bar}
         <div className="page workflow">
+          {panel}
           {error ? <p className="request-error">{error}</p> : !intro && <p className="muted">Loading…</p>}
         </div>
       </>
@@ -540,9 +604,7 @@ export function WorkflowView({
 
         {error && <p className="request-error">{error}</p>}
 
-        {shown && !arriving && (
-          <JobPanel job={shown} onAnswer={answer} onStop={stop} onPause={pause} spring={intro !== null} withCard={!building} />
-        )}
+        {panel}
 
         {wf.status !== 'building' && (
           <div className="wf-grid">
