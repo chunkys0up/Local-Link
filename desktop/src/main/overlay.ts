@@ -37,17 +37,47 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   .frame { position: fixed; inset: 0; border-radius: var(--top-r, 0) var(--top-r, 0) var(--bottom-r, 0) var(--bottom-r, 0); opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
   /* A build or run is going: a quiet reminder. Its border is a ring (masked to the edge)
-     lit by one radial glow, brightest at its centre, whose centre travels around the
-     edge of the screen (the orbit keyframes are written for the screen's size below). */
+     lit by one radial glow, brightest at its centre, whose centre circles the edge of the
+     screen (orbit, written for the screen's size below). */
   @property --gx { syntax: '<length>'; inherits: false; initial-value: 0px; }
   @property --gy { syntax: '<length>'; inherits: false; initial-value: 0px; }
   .frame::before { content: ''; position: absolute; inset: 0; padding: 5px; border-radius: inherit; opacity: 0;
     background: radial-gradient(circle 700px at var(--gx) var(--gy), rgb(255, 190, 140), rgba(255, 125, 54, 0.85) 30%, rgba(255, 110, 40, 0.3));
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-    transition: opacity .3s; animation: orbit 8s linear infinite; }
-  body.session .frame { opacity: 1; box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22); }
-  body.session .frame::before { opacity: 1; }
+    transition: opacity .3s; }
+  body.session .frame { opacity: 1; box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22);
+    transition: opacity .3s, border-color .25s, border-width .25s, box-shadow 2.2s ease-out; }
+  /* When it appears, the ring draws itself on first: a glowing line traced clockwise around
+     the edge from the top-left corner (an SVG rounded rect, so it follows the corners at one
+     even speed), a bright tip leading, on a gentle, fairly even ease-out. As it closes, the
+     glows shrink away (they narrow to nothing rather than fade), and the thin line hands over
+     to the ring, whose glow then circles on. */
+  body.session .frame::before { opacity: 1; animation: orbit 8s linear 2.2s infinite; }
+  body.drawing .frame::before { animation: ring-in .5s ease-out 2.2s both, orbit 8s linear 2.2s infinite; }
+  @keyframes ring-in { from { opacity: 0; } }
   body.on .frame::before { opacity: 0; }
+  .draw { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; opacity: 0; pointer-events: none; }
+  body.drawing .draw { opacity: 1; animation: draw-fade-in .5s ease-out both; } /* the line fades in as it starts */
+  @keyframes draw-fade-in { from { opacity: 0; } }
+  body.on .draw { display: none; }
+  .draw rect { x: 2.5px; y: 2.5px; width: calc(100% - 5px); height: calc(100% - 5px); rx: max(0px, calc(var(--top-r, 0px) - 2.5px));
+    fill: none; stroke-width: 5px; stroke-linecap: round; }
+  .draw .halo { stroke: rgb(255, 120, 50); stroke-width: 14px; filter: blur(10px); opacity: .55; }
+  .draw .line { stroke: rgba(255, 125, 54, 0.75); }
+  .draw .head { stroke: rgb(255, 205, 160); stroke-dasharray: 70 930; }
+  .draw .head-halo { stroke: rgb(255, 170, 110); stroke-width: 12px; stroke-dasharray: 90 910; filter: blur(7px); opacity: .7; }
+  body.drawing .draw .halo { stroke-dasharray: 1000 1000;
+    animation: draw-on 2.2s cubic-bezier(0.32, 0.4, 0.62, 0.88) both, shrink-glow .9s ease-in-out 1.7s both; }
+  body.drawing .draw .line { stroke-dasharray: 1000 1000;
+    animation: draw-on 2.2s cubic-bezier(0.32, 0.4, 0.62, 0.88) both, hand-over .5s ease-out 2.2s both; }
+  body.drawing .draw .head { animation: draw-head 2.2s cubic-bezier(0.32, 0.4, 0.62, 0.88) both, shrink-tip .6s ease-in 1.6s both; }
+  body.drawing .draw .head-halo { animation: draw-head-halo 2.2s cubic-bezier(0.32, 0.4, 0.62, 0.88) both, shrink-glow .6s ease-in 1.6s both; }
+  @keyframes draw-on { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+  @keyframes draw-head { from { stroke-dashoffset: 70; } to { stroke-dashoffset: -930; } }
+  @keyframes draw-head-halo { from { stroke-dashoffset: 90; } to { stroke-dashoffset: -910; } }
+  @keyframes shrink-tip { to { stroke-width: 0; } }
+  @keyframes shrink-glow { to { stroke-width: 0; filter: blur(0); } }
+  @keyframes hand-over { to { opacity: 0; } }
   /* Driving an app right now: hands off. */
   body.on .frame { opacity: 1; border: 6px solid var(--accent); box-shadow: inset 0 0 36px 8px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
@@ -65,6 +95,10 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   button[hidden] { display: none; }
 </style></head><body>
   <div class="frame"></div>
+  <svg class="draw" aria-hidden="true">
+    <rect class="halo" pathLength="1000" /><rect class="line" pathLength="1000" />
+    <rect class="head-halo" pathLength="1000" /><rect class="head" pathLength="1000" />
+  </svg>
   <div class="pill" id="pill"><span class="dot"></span><span id="text"></span><button id="stop">Stop</button></div>
 <script>
   // The glow's path: clockwise along the screen's edge from the top-left, each side taking
@@ -91,8 +125,21 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   pill.addEventListener('mouseenter', () => window.retronaut.overlay.hover(true))
   pill.addEventListener('mouseleave', () => window.retronaut.overlay.hover(false))
   stop.addEventListener('click', () => window.retronaut.overlay.stop())
+  // The draw-on plays once, when a session first shows the frame (not each time the frame
+  // comes back from "hands off").
+  let wasSession = false
+  let drawn = null
+  const drawOn = () => {
+    clearTimeout(drawn)
+    document.body.classList.remove('drawing')
+    void document.body.offsetWidth // restart the animations
+    document.body.classList.add('drawing')
+    drawn = setTimeout(() => document.body.classList.remove('drawing'), 2800)
+  }
   window.render = (s) => {
     drawOrbit()
+    if (s.session && !wasSession) drawOn()
+    wasSession = s.session
     document.body.classList.toggle('session', s.session)
     document.body.classList.toggle('on', s.active)
     document.body.classList.toggle('paused', s.paused)
