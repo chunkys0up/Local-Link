@@ -34,22 +34,36 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body.paused { --accent: #fbbf24; --glow: rgba(251, 191, 36, 0.4); }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     font: 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-user-select: none; cursor: default; }
-  .frame { position: fixed; inset: 0; border-radius: var(--top-r, 0) var(--top-r, 0) var(--bottom-r, 0) var(--bottom-r, 0); opacity: 0;
+  /* The frame rests 8px past the screen's edges (its border 8px thicker to match), so its
+     arrival can spring a little inward without uncovering the edge. */
+  .frame { position: fixed; inset: -8px; border-radius: calc(var(--top-r, 0px) + 8px) calc(var(--top-r, 0px) + 8px) calc(var(--bottom-r, 0px) + 8px) calc(var(--bottom-r, 0px) + 8px); opacity: 0;
     transition: opacity .3s, border-color .25s, border-width .25s, box-shadow .25s; }
   /* A build or run is going: a quiet reminder. Its border is a ring (masked to the edge)
      lit by one radial glow, brightest at its centre, whose centre travels around the
      edge of the screen (the orbit keyframes are written for the screen's size below). */
   @property --gx { syntax: '<length>'; inherits: false; initial-value: 0px; }
   @property --gy { syntax: '<length>'; inherits: false; initial-value: 0px; }
-  .frame::before { content: ''; position: absolute; inset: 0; padding: 5px; border-radius: inherit; opacity: 0;
-    background: radial-gradient(circle 700px at var(--gx) var(--gy), rgb(255, 190, 140), rgba(255, 125, 54, 0.85) 30%, rgba(255, 110, 40, 0.3));
+  @property --glow-r { syntax: '<length>'; inherits: false; initial-value: 700px; }
+  .frame::before { content: ''; position: absolute; inset: 0; padding: 13px; border-radius: inherit; opacity: 0;
+    background: radial-gradient(circle var(--glow-r) at var(--gx) var(--gy), rgb(255, 190, 140), rgba(255, 125, 54, 0.85) 30%, rgba(255, 110, 40, 0.3));
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
     transition: opacity .3s; animation: orbit 8s linear infinite; }
-  body.session .frame { opacity: 1; box-shadow: inset 0 0 22px rgba(255, 70, 8, 0.22); }
-  body.session .frame::before { opacity: 1; }
+  body.session .frame { opacity: 1; box-shadow: inset 0 0 22px 8px rgba(255, 70, 8, 0.22);
+    animation: frame-in 3.1s linear(0, 0.0272, 0.0995, 0.2033, 0.3264, 0.4582, 0.5898, 0.7145, 0.8272, 0.9245, 1.0048, 1.0675, 1.1131, 1.1429, 1.1588, 1.163, 1.1577, 1.1453, 1.128, 1.1077, 1.0862, 1.0648, 1.0446, 1.0265, 1.0109, 0.9981, 0.9881, 0.981, 0.9763, 0.974, 0.9735, 0.9744, 0.9766, 0.9795, 0.9828, 0.9863, 0.9898, 0.993, 0.996, 0.9985, 1.0005, 1.0021, 1.0032, 1.0039, 1) both, frame-fade 1s cubic-bezier(0.33, 1, 0.68, 1) .45s both; }
+  /* Appearing, it closes in from just past the screen's edges (the same 12px on every side,
+     not a scale, which would reach further out on the long sides) on a slow, heavy spring,
+     about 2px inward (its peak at 1.05s) and back, fading in from the moment its ring comes on screen (0.45s, the
+     ring starting just past the edge) over 1s. */
+  @keyframes frame-in { from { inset: -20px; } }
+  @keyframes frame-fade { from { opacity: 0; } }
+  /* Appearing, the whole ring starts as bright as the glow's centre, then the brightness
+     condenses into the moving glow (its radius shrinking from far past the screen to 700px)
+     as the frame swings back from its overshoot (35% of 3s: the spring's peak). */
+  body.session .frame::before { opacity: 1; animation: orbit 8s linear infinite, glow-in 3s ease-in-out both; }
+  @keyframes glow-in { 0%, 35% { --glow-r: 9000px; } }
   body.on .frame::before { opacity: 0; }
   /* Driving an app right now: hands off. */
-  body.on .frame { opacity: 1; border: 6px solid var(--accent); box-shadow: inset 0 0 36px 8px var(--glow); }
+  body.on .frame { opacity: 1; border: 14px solid var(--accent); box-shadow: inset 0 0 36px 16px var(--glow); }
   .pill { position: fixed; left: 50%; top: var(--top, 10px); transform: translate(-50%, -6px);
     display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 999px;
     background: rgba(28, 28, 27, 0.94); color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px var(--accent);
