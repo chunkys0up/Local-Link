@@ -1,7 +1,33 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 
 import { live, type JobEvent, type JobSnapshot } from './api'
-import { BUILD_PHASES, buildPhase, phaseDurations } from './phases'
+import { BUILD_PHASES, activeSeconds, buildPhase, phaseDurations } from './phases'
+
+/**
+ * Pausing a build: the current phase's sweep (a CSS animation on its ::after) eases to a stop
+ * rather than halting; resuming picks it up again. (Shell.css dims it while paused.)
+ */
+function usePausedSweep(list: RefObject<HTMLOListElement | null>, paused: boolean): void {
+  useEffect(() => {
+    const dot = list.current?.querySelector<HTMLElement>('li.now .phase-dot')
+    const sweep = dot?.getAnimations({ subtree: true }).find((a) => (a as CSSAnimation).animationName?.startsWith('phase-run'))
+    if (!sweep) return
+    if (!paused) {
+      sweep.playbackRate = 1
+      sweep.play()
+      return
+    }
+    // Slow it to a stop over half a second (ease-out), then hold it there.
+    const start = performance.now()
+    let frame = requestAnimationFrame(function slow(now) {
+      const t = Math.min(1, (now - start) / 500)
+      sweep.playbackRate = (1 - t) ** 2
+      if (t < 1) frame = requestAnimationFrame(slow)
+      else sweep.pause()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [list, paused])
+}
 
 /** A tool call as a person would describe it. */
 export function friendly(e: JobEvent): string {
@@ -86,13 +112,15 @@ export function BuildCard({
   const shot = [...job.events].reverse().find((e) => e.image)
   const recent = recentSteps(job, 4)
   const latest = job.events[job.events.length - 1]
-  const elapsed = (running ? now : (job.finished ?? now)) - job.started
+  const elapsed = activeSeconds(job, job.started, running ? now : (job.finished ?? now)) // paused time doesn't count
   const title = jobTitle(job)
 
   const state = `${running ? 'build-live' : `build-${job.status}`}${running && job.paused ? ' build-paused' : ''}`
   const took = job.kind === 'build' ? phaseDurations(job, now) : []
+  const phaseList = useRef<HTMLOListElement>(null)
+  usePausedSweep(phaseList, running && Boolean(job.paused))
   const phases = job.kind === 'build' && (
-    <ol className="phases" aria-label="Build progress">
+    <ol className="phases" aria-label="Build progress" ref={phaseList}>
       {BUILD_PHASES.map((p, i) => (
         <li key={p.id} className={i < phase || job.status === 'passed' ? 'done' : i === phase && running ? 'now' : ''}>
           <span className="phase-dot" aria-hidden="true" />

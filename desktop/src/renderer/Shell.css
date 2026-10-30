@@ -959,9 +959,12 @@ button.small-button {
 .build-controls button.stop:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.24);
 }
-/* Paused: the phase bar holds where it is. */
+/* Paused, the current phase's sweep eases to a stop (BuildCard's usePausedSweep) and dims. */
+.phases li.now .phase-dot::after {
+  transition: opacity 0.5s ease-out;
+}
 .build-paused .phases li.now .phase-dot::after {
-  animation-play-state: paused;
+  opacity: 0.3;
 }
 .build-text h2 {
   font-size: 17px;

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
 import type { JobEvent, JobSnapshot, UserRequest } from '../src/renderer/api'
-import { buildPhase, phaseDurations, phaseStarts } from '../src/renderer/phases'
+import { activeSeconds, buildPhase, phaseDurations, phaseStarts } from '../src/renderer/phases'
 
 const event = (ts: number, kind: string, label: string, i = 0): JobEvent => ({ i, ts, kind, label, detail: '' })
 const plan = (answered?: number | null): UserRequest => ({
@@ -37,4 +37,15 @@ test('the current phase counts up; phases ahead have no time, skipped ones none 
   expect(buildPhase(job)).toBe(2)
   // Straight from understanding to exploring: connecting had no time of its own.
   expect(phaseDurations(job, 70)).toEqual([10, null, 60, null, null, null])
+})
+
+test('time spent paused is left out of the build and phase timers', () => {
+  const job = { ...build(events, [plan(255)], 'running'), pauses: [[40, 100], [300, null]] as [number, number | null][] }
+  // Exploring ran 30-200 with 40-100 paused: 110s, not 170s.
+  expect(activeSeconds(job, 30, 200)).toBe(110)
+  // Writing began at 255 and was paused at 300, still paused at 400: 45s so far, not 145s.
+  expect(phaseDurations(job, 400)[4]).toBe(45)
+  expect(phaseDurations(job, 500)[4]).toBe(45) // it doesn't count up while paused
+  // The build's own clock: 400s since it began, 60s + 100s of it paused.
+  expect(activeSeconds(job, 0, 400)).toBe(240)
 })

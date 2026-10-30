@@ -70,9 +70,20 @@ export function phaseStarts(job: JobSnapshot): (number | null)[] {
   return starts
 }
 
+/** Seconds from `from` to `to` that the build wasn't paused (time paused doesn't count). */
+export function activeSeconds(job: JobSnapshot, from: number, to: number): number {
+  let paused = 0
+  for (const [start, end] of job.pauses ?? []) {
+    const a = Math.max(start, from)
+    const b = Math.min(end ?? to, to)
+    if (b > a) paused += b - a
+  }
+  return Math.max(0, to - from - paused)
+}
+
 /**
- * How long each phase took, or has taken so far (seconds); null for phases not reached, or
- * passed through without time of their own.
+ * How long each phase took, or has taken so far (seconds, leaving out time paused); null for
+ * phases not reached, or passed through without time of their own.
  */
 export function phaseDurations(job: JobSnapshot, now: number): (number | null)[] {
   const starts = phaseStarts(job)
@@ -82,7 +93,7 @@ export function phaseDurations(job: JobSnapshot, now: number): (number | null)[]
   return starts.map((start, i) => {
     if (start === null || i > current) return null
     const next = starts.slice(i + 1).find((t): t is number => t !== null)
-    const took = (i < current && next !== undefined ? next : end) - start
+    const took = activeSeconds(job, start, i < current && next !== undefined ? next : end)
     return i < current && took < 1 ? null : Math.max(0, took)
   })
 }
